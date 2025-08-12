@@ -17,6 +17,7 @@ from models.database_models import User, get_db
 from services.auth_service import get_current_active_user
 from services.websocket_service import WebSocketService
 from services.mental_health_agent_service import MentalHealthAgentService
+from services.validation_service import ValidationService
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -25,24 +26,46 @@ router = APIRouter(prefix="/agent", tags=["Mental Health Agent"])
 # Initialize services
 websocket_service = WebSocketService()
 agent_service = MentalHealthAgentService()
+validation_service = ValidationService()
 
-@router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, chat_id: str):
-    """Simple WebSocket endpoint for mental health bot connection"""
+@router.websocket("/chat/{chat_id}")
+async def websocket_endpoint(websocket: WebSocket, chat_id: str, token: str = None):
+    """Secure WebSocket endpoint for mental health bot connection"""
     
     try:
-        # Accept the connection
-        await websocket.accept()
+        # Validate chat ID
+        is_valid_chat, chat_error = validation_service.validate_chat_id(chat_id)
+        if not is_valid_chat:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=chat_error)
+            return
         
-        # Send simple success response
-        success_message = {
-            "status": "connected",
-            "message": "Successfully connected to Mental Health Bot",
-            "user_id": user_id,
-            "timestamp": datetime.now(UTC).isoformat()
+        # Get database session
+        db = next(get_db())
+        
+        # Validate WebSocket connection with token from query parameter
+        is_valid, user, error_reason = await validation_service.validate_websocket_connection(websocket, db, token)
+        if not is_valid:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=error_reason)
+            return
+        
+        # Store connection in websocket service
+        user_info = {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email
         }
+        await websocket_service.connect(websocket, chat_id, user_info)
         
-        await websocket.send_text(json.dumps(success_message))
+        # Send welcome message
+        welcome_message = validation_service.create_success_response(
+            "connection",
+            f"Welcome {user.first_name}! Successfully connected to Mental Health Bot",
+            chat_id=chat_id,
+            user_id=user.id
+        )
+        
+        await websocket.send_text(json.dumps(welcome_message))
         
         # Keep connection alive and listen for messages
         while True:
@@ -50,24 +73,48 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 # Wait for any message from client
                 data = await websocket.receive_text()
                 
-                # Echo back a simple response
-                response = {
-                    "status": "received",
-                    "message": f"Received: {data}",
-                    "user_id": user_id,
-                    "timestamp": datetime.now(UTC).isoformat()
-                }
+                # Validate message format
+                is_valid_msg, msg_error = validation_service.validate_message_format(data)
+                if not is_valid_msg:
+                    error_response = validation_service.create_error_response(
+                        "validation_error", 
+                        msg_error,
+                        chat_id=chat_id,
+                        user_id=user.id
+                    )
+                    await websocket.send_text(json.dumps(error_response))
+                    continue
+                
+                # Process message with agent service
+                bot_response = await agent_service.process_user_message(data, str(user.id), db)
+                
+                # Send bot response back to user
+                response = validation_service.create_success_response(
+                    "bot_response",
+                    bot_response.get("content", "I'm here to help you."),
+                    chat_id=chat_id,
+                    user_id=user.id
+                )
                 
                 await websocket.send_text(json.dumps(response))
                 
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
+                error_response = validation_service.create_error_response(
+                    "processing_error",
+                    "An error occurred while processing your message",
+                    chat_id=chat_id,
+                    user_id=user.id
+                )
+                await websocket.send_text(json.dumps(error_response))
                 break
                 
     except WebSocketDisconnect:
-        logger.info(f"User {user_id} disconnected")
+        websocket_service.disconnect(chat_id)
+        logger.info(f"User {chat_id} disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error for user {user_id}: {e}")
+        logger.error(f"WebSocket error for user {chat_id}: {e}")
+        websocket_service.disconnect(chat_id)
         try:
             await websocket.close()
         except:
@@ -76,22 +123,39 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
 
 @router.post("/send-message")
 async def send_message_to_user(
-    user_id: str,
+    chat_id: str,
     message: str,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Send a message to a specific user via WebSocket (admin/provider only)"""
     
-    # Check if current user is admin or provider
-    if not (current_user.is_admin or getattr(current_user, 'is_provider', False)):
+    # Validate chat ID
+    is_valid_chat, chat_error = validation_service.validate_chat_id(chat_id)
+    if not is_valid_chat:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=chat_error
+        )
+    
+    # Validate message format
+    is_valid_msg, msg_error = validation_service.validate_message_format(message)
+    if not is_valid_msg:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg_error
+        )
+    
+    # Check user permissions
+    has_permission, perm_error = validation_service.validate_user_permissions(current_user, "provider")
+    if not has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to send messages"
+            detail=perm_error
         )
     
     # Check if user is connected
-    if not websocket_service.is_connected(user_id):
+    if not websocket_service.is_connected(chat_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User is not currently connected"
@@ -106,14 +170,14 @@ async def send_message_to_user(
         "timestamp": datetime.now(UTC).isoformat()
     }
     
-    success = await websocket_service.send_json_message(admin_message, user_id)
+    success = await websocket_service.send_json_message(admin_message, chat_id)
     
     if success:
-        return {
-            "message": "Message sent successfully",
-            "user_id": user_id,
-            "timestamp": datetime.now(UTC).isoformat()
-        }
+        return validation_service.create_success_response(
+            "message_sent",
+            "Message sent successfully",
+            chat_id=chat_id
+        )
     else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

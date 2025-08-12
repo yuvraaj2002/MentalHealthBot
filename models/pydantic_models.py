@@ -2,6 +2,12 @@ from pydantic import BaseModel, EmailStr, field_validator, Field, ConfigDict
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 
+class BaseResponse(BaseModel):
+    """Base response model for API responses"""
+    success: bool = True
+    message: str
+    data: Optional[Dict[str, Any]] = None
+
 class UserBase(BaseModel):
     first_name: str
     last_name: str

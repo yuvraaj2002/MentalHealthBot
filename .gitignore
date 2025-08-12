@@ -333,3 +333,6 @@ htmlcov/
 # Memory dumps
 *.dump
 *.dmp
+
+# Ignore testing folder
+/testing/
