@@ -218,7 +218,7 @@
     <div class="container">
         <div class="header">
             <h1>🧠 Mental Health Bot</h1>
-            <p>WebSocket Connection Test Interface</p>
+            <p>WebSocket Connection Test Interface (Test Mode - No Authentication)</p>
         </div>
 
         <div class="content">
@@ -233,7 +233,7 @@
                 <input type="text" id="chatId" value="test_chat_123" placeholder="Enter chat ID">
             </div>
 
-            <div class="form-group">
+            <div class="form-group" style="display: none;">
                 <label for="authToken">JWT Token:</label>
                 <input type="text" id="authToken" placeholder="Enter your JWT token" style="font-family: monospace;">
             </div>
@@ -241,7 +241,7 @@
             <div class="form-group">
                 <label for="endpoint">Endpoint:</label>
                 <select id="endpoint">
-                    <option value="/agent/ws/chat/">/agent/ws/chat/</option>
+                    <option value="/agent/chat/">/agent/chat/</option>
                 </select>
             </div>
 
@@ -309,16 +309,15 @@
         function connect() {
             const baseUrl = document.getElementById('baseUrl').value;
             const chatId = document.getElementById('chatId').value;
-            const authToken = document.getElementById('authToken').value;
             const endpoint = document.getElementById('endpoint').value;
 
-            if (!baseUrl || !chatId || !authToken) {
-                addMessage('Please fill in all fields', 'system');
+            if (!baseUrl || !chatId) {
+                addMessage('Please fill in Base URL and Chat ID', 'system');
                 return;
             }
 
-            // Convert HTTP to WebSocket URL and add token as query parameter
-            const wsUrl = baseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + endpoint + chatId + '?token=' + encodeURIComponent(authToken);
+            // Convert HTTP to WebSocket URL (no token needed for local testing)
+            const wsUrl = baseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + endpoint + chatId;
 
             updateStatus('connecting', 'Connecting...');
             addMessage(`Connecting to ${wsUrl}...`, 'system');
@@ -343,7 +342,7 @@
                             document.getElementById('connectionInfo').style.display = 'block';
                             document.getElementById('connectionUrl').textContent = wsUrl;
                             document.getElementById('connectionChatId').textContent = chatId;
-                            document.getElementById('connectionUser').textContent = data.user_id || 'Unknown';
+                            document.getElementById('connectionUser').textContent = data.user_id || 'Test User';
 
                             // Enable controls
                             document.getElementById('messageInput').disabled = false;

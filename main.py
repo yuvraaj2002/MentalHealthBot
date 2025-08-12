@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.auth import router as api_router
 from routers.checkin import router as checkin_router
+from routers.agent import router as agent_router
 
 app = FastAPI(
     title="Mental Health Bot API",
@@ -35,6 +36,7 @@ async def health_check():
 # Include routers
 app.include_router(api_router)
 app.include_router(checkin_router)
+app.include_router(agent_router)
 
 if __name__ == "__main__":
     import uvicorn

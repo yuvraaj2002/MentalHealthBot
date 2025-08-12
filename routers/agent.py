@@ -18,6 +18,7 @@ from services.auth_service import get_current_active_user
 from services.websocket_service import WebSocketService
 from services.mental_health_agent_service import MentalHealthAgentService
 from services.validation_service import ValidationService
+from services.redis_service import RedisService
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,11 @@ router = APIRouter(prefix="/agent", tags=["Mental Health Agent"])
 websocket_service = WebSocketService()
 agent_service = MentalHealthAgentService()
 validation_service = ValidationService()
+redis_service = RedisService()
 
 @router.websocket("/chat/{chat_id}")
-async def websocket_endpoint(websocket: WebSocket, chat_id: str, token: str = None):
-    """Secure WebSocket endpoint for mental health bot connection"""
+async def websocket_endpoint(websocket: WebSocket, chat_id: str):
+    """WebSocket endpoint for mental health bot connection (no auth for local testing)"""
     
     try:
         # Validate chat ID
@@ -42,30 +44,28 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str, token: str = No
         # Get database session
         db = next(get_db())
         
-        # Validate WebSocket connection with token from query parameter
-        is_valid, user, error_reason = await validation_service.validate_websocket_connection(websocket, db, token)
-        if not is_valid:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=error_reason)
-            return
+        # Create a mock user for testing
+        mock_user = {
+            "id": 1,
+            "first_name": "Test",
+            "last_name": "User",
+            "email": "test@example.com"
+        }
         
         # Store connection in websocket service
-        user_info = {
-            "id": user.id,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "email": user.email
-        }
-        await websocket_service.connect(websocket, chat_id, user_info)
+        await websocket_service.connect(websocket, chat_id, mock_user)
         
-        # Send welcome message
-        welcome_message = validation_service.create_success_response(
-            "connection",
-            f"Welcome {user.first_name}! Successfully connected to Mental Health Bot",
-            chat_id=chat_id,
-            user_id=user.id
-        )
-        
-        await websocket.send_text(json.dumps(welcome_message))
+        # Check if chat_id exists in Redis
+        chat_exists = redis_service.key_exists(chat_id)
+        bot_response = None
+        if chat_exists:
+            # Gretting agent will take over
+            pass
+        else:
+            # Conversation agent will take over
+            pass
+
+        await websocket.send_text(json.dumps(bot_response))
         
         # Keep connection alive and listen for messages
         while True:
@@ -80,20 +80,18 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str, token: str = No
                         "validation_error", 
                         msg_error,
                         chat_id=chat_id,
-                        user_id=user.id
+                        user_id=mock_user['id']
                     )
                     await websocket.send_text(json.dumps(error_response))
                     continue
                 
                 # Process message with agent service
-                bot_response = await agent_service.process_user_message(data, str(user.id), db)
-                
-                # Send bot response back to user
+                bot_response = await agent_service.process_user_message(data, str(mock_user['id']), db)
                 response = validation_service.create_success_response(
                     "bot_response",
-                    bot_response.get("content", "I'm here to help you."),
+                    bot_response.get('content', 'I\'m here to help you.'),
                     chat_id=chat_id,
-                    user_id=user.id
+                    user_id=mock_user['id']
                 )
                 
                 await websocket.send_text(json.dumps(response))
@@ -104,17 +102,21 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str, token: str = No
                     "processing_error",
                     "An error occurred while processing your message",
                     chat_id=chat_id,
-                    user_id=user.id
+                    user_id=mock_user['id']
                 )
                 await websocket.send_text(json.dumps(error_response))
                 break
                 
     except WebSocketDisconnect:
         websocket_service.disconnect(chat_id)
+        # Clean up Redis key on disconnect
+        redis_service.delete_key(chat_id)
         logger.info(f"User {chat_id} disconnected")
     except Exception as e:
         logger.error(f"WebSocket error for user {chat_id}: {e}")
         websocket_service.disconnect(chat_id)
+        # Clean up Redis key on error
+        redis_service.delete_key(chat_id)
         try:
             await websocket.close()
         except:

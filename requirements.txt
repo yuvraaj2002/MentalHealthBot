@@ -12,3 +12,4 @@ pydantic_settings
 pydantic[email]
 bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
+redis>=4.5.0

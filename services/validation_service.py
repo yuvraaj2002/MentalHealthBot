@@ -98,7 +98,7 @@ class ValidationService:
     def validate_chat_id(chat_id: str) -> Tuple[bool, Optional[str]]:
         """
         Validate chat ID format
-        
+
         Returns:
             Tuple[bool, Optional[str]]: 
                 - valid: bool
@@ -106,10 +106,15 @@ class ValidationService:
         """
         if not chat_id or not chat_id.strip():
             return False, "Chat ID cannot be empty"
-        
+
         if len(chat_id.strip()) > 100:  # Max chat ID length
             return False, "Chat ID too long (max 100 characters)"
-        
+
+        # Ensure chat_id splits into exactly 3 parts by '_'
+        parts = chat_id.strip().split('_')
+        if len(parts) != 3:
+            return False, "Chat ID must have exactly 3 parts separated by underscores (e.g., userId_checkinId_type)"
+
         return True, None
     
     @staticmethod

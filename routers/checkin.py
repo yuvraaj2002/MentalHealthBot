@@ -53,7 +53,7 @@ async def morning_checkin(
         
         return CheckinResponse(
             message="Morning check-in recorded successfully",
-            checkin_id=f"{current_user.id}_{db_checkin.id}",
+            checkin_id=f"{current_user.id}_{db_checkin.id}_0",
             checkin_type="morning",
             timestamp=db_checkin.checkin_time.isoformat(),
             user_id=current_user.id
@@ -102,7 +102,7 @@ async def evening_checkin(
         
         return CheckinResponse(
             message="Evening check-in recorded successfully",
-            checkin_id=f"{current_user.id}_{db_checkin.id}",
+            checkin_id=f"{current_user.id}_{db_checkin.id}_1",
             checkin_type="evening",
             timestamp=db_checkin.checkin_time.isoformat(),
             user_id=current_user.id
