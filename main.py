@@ -1,6 +1,12 @@
+import sys
+import os
+
+# Add project root to path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers.api import router as api_router
+from routers.auth import router as api_router
 
 app = FastAPI(
     title="Mental Health Bot API",
