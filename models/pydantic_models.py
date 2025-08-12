@@ -59,3 +59,25 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+# Check-in Models
+class MorningCheckin(BaseModel):
+    sleep_quality: str = Field(description="Quality of sleep (e.g., 'excellent', 'good', 'fair', 'poor')")
+    body_sensation: str = Field(description="How the body feels (e.g., 'refreshed', 'tired', 'energized', 'achy')")
+    energy_level: str = Field(description="Current energy level (e.g., 'high', 'medium', 'low', 'exhausted')")
+    mental_state: str = Field(description="Mental state (e.g., 'clear', 'foggy', 'focused', 'scattered')")
+    executive_task: str = Field(description="Ability to perform executive tasks (e.g., 'sharp', 'struggling', 'capable', 'overwhelmed')")
+
+class EveningCheckin(BaseModel):
+    emotion_category: str = Field(description="Primary emotion category (e.g., 'joy', 'sadness', 'anger', 'anxiety', 'contentment')")
+    overwhelm_amount: str = Field(description="Level of overwhelm (e.g., 'none', 'slight', 'moderate', 'high', 'extreme')")
+    emotion_in_moment: str = Field(description="Current emotion (e.g., 'calm', 'stressed', 'grateful', 'frustrated')")
+    surroundings_impact: str = Field(description="Impact of surroundings (e.g., 'positive', 'negative', 'neutral', 'distracting')")
+    meaningful_moments_quantity: str = Field(description="Number of meaningful moments (e.g., 'none', 'few', 'several', 'many')")
+
+class CheckinResponse(BaseModel):
+    message: str
+    checkin_id: str
+    checkin_type: str
+    timestamp: str
+    user_id: int

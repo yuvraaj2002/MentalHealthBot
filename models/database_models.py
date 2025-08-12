@@ -57,6 +57,33 @@ class Conversation(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
+class Checkin(Base):
+    """Daily check-in table for mental health tracking"""
+    __tablename__ = "checkins"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    checkin_type = Column(String(20), nullable=False)  # "morning" or "evening"
+    
+    # Morning check-in fields
+    sleep_quality = Column(String(100), nullable=True)
+    body_sensation = Column(String(100), nullable=True)
+    energy_level = Column(String(100), nullable=True)
+    mental_state = Column(String(100), nullable=True)
+    executive_task = Column(String(100), nullable=True)
+    
+    # Evening check-in fields
+    emotion_category = Column(String(100), nullable=True)
+    overwhelm_amount = Column(String(100), nullable=True)
+    emotion_in_moment = Column(String(100), nullable=True)
+    surroundings_impact = Column(String(100), nullable=True)
+    meaningful_moments_quantity = Column(String(100), nullable=True)
+    
+    # Timestamps
+    checkin_time = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
 
 # Database dependency
 def get_db():

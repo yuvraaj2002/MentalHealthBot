@@ -274,6 +274,228 @@ if (pm.response.code === 200) {
 - **Input Validation**: Pydantic model validation
 - **SQL Injection Protection**: SQLAlchemy ORM
 
+## Daily Check-ins
+
+The Mental Health Bot API includes a comprehensive daily check-in system to help users track their mental health patterns throughout the day.
+
+### Check-in System Overview
+
+The system supports two types of daily check-ins:
+- **Morning Check-ins**: Track sleep quality, body sensations, energy levels, and mental state
+- **Evening Check-ins**: Monitor emotional patterns, overwhelm levels, and meaningful moments
+
+### Check-in Endpoints
+
+#### 1. Morning Check-in
+**POST** `/checkin/morning`
+
+Records a morning mental health check-in with sleep and energy metrics.
+
+**Request Body:**
+```json
+{
+  "sleep_quality": "good",
+  "body_sensation": "refreshed",
+  "energy_level": "high",
+  "mental_state": "clear",
+  "executive_task": "sharp"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Morning check-in recorded successfully",
+  "checkin_id": 1,
+  "checkin_type": "morning",
+  "timestamp": "2024-01-15T08:00:00Z",
+  "user_id": 123
+}
+```
+
+**Field Descriptions:**
+- `sleep_quality`: Quality of sleep (excellent, good, fair, poor)
+- `body_sensation`: How the body feels (refreshed, tired, energized, achy)
+- `energy_level`: Current energy level (high, medium, low, exhausted)
+- `mental_state`: Mental clarity (clear, foggy, focused, scattered)
+- `executive_task`: Ability to perform tasks (sharp, struggling, capable, overwhelmed)
+
+#### 2. Evening Check-in
+**POST** `/checkin/evening`
+
+Records an evening mental health check-in with emotional and environmental metrics.
+
+**Request Body:**
+```json
+{
+  "emotion_category": "contentment",
+  "overwhelm_amount": "none",
+  "emotion_in_moment": "grateful",
+  "surroundings_impact": "positive",
+  "meaningful_moments_quantity": "several"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Evening check-in recorded successfully",
+  "checkin_id": 2,
+  "checkin_type": "evening",
+  "timestamp": "2024-01-15T20:00:00Z",
+  "user_id": 123
+}
+```
+
+**Field Descriptions:**
+- `emotion_category`: Primary emotion (joy, sadness, anger, anxiety, contentment)
+- `overwhelm_amount`: Level of overwhelm (none, slight, moderate, high, extreme)
+- `emotion_in_moment`: Current emotion (calm, stressed, grateful, frustrated)
+- `surroundings_impact`: Impact of environment (positive, negative, neutral, distracting)
+- `meaningful_moments_quantity`: Number of meaningful moments (none, few, several, many)
+
+#### 3. Get Check-in History
+**GET** `/checkin/history?limit=30`
+
+Retrieves the user's check-in history with optional limit parameter.
+
+**Headers:**
+```
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200):**
+```json
+{
+  "user_id": 123,
+  "checkins": [
+    {
+      "id": 1,
+      "checkin_type": "morning",
+      "checkin_time": "2024-01-15T08:00:00Z",
+      "morning_data": {
+        "sleep_quality": "good",
+        "body_sensation": "refreshed",
+        "energy_level": "high",
+        "mental_state": "clear",
+        "executive_task": "sharp"
+      },
+      "evening_data": null
+    },
+    {
+      "id": 2,
+      "checkin_type": "evening",
+      "checkin_time": "2024-01-15T20:00:00Z",
+      "morning_data": null,
+      "evening_data": {
+        "emotion_category": "contentment",
+        "overwhelm_amount": "none",
+        "emotion_in_moment": "grateful",
+        "surroundings_impact": "positive",
+        "meaningful_moments_quantity": "several"
+      }
+    }
+  ],
+  "total_count": 2
+}
+```
+
+#### 4. Get Today's Check-ins
+**GET** `/checkin/today`
+
+Retrieves today's check-ins for the current user.
+
+**Headers:**
+```
+Authorization: Bearer <your_jwt_token>
+```
+
+**Response (200):**
+```json
+{
+  "user_id": 123,
+  "date": "2024-01-15",
+  "morning_checkin": {
+    "id": 1,
+    "sleep_quality": "good",
+    "body_sensation": "refreshed",
+    "energy_level": "high",
+    "mental_state": "clear",
+    "executive_task": "sharp"
+  },
+  "evening_checkin": {
+    "id": 2,
+    "emotion_category": "contentment",
+    "overwhelm_amount": "none",
+    "emotion_in_moment": "grateful",
+    "surroundings_impact": "positive",
+    "meaningful_moments_quantity": "several"
+  },
+  "total_checkins": 2
+}
+```
+
+### Using Check-ins in Postman
+
+#### Environment Variables
+```
+base_url: http://localhost:8000
+auth_token: <your_jwt_token>
+```
+
+#### Collection Setup
+1. Create a new collection called "Mental Health Check-ins"
+2. Set the base URL variable
+3. Add Authorization header with Bearer token
+
+#### Test Scripts
+```javascript
+// Test Script to automatically save checkin_id
+if (pm.response.code === 200) {
+    const response = pm.response.json();
+    if (response.checkin_id) {
+        pm.environment.set("last_checkin_id", response.checkin_id);
+    }
+}
+```
+
+### Check-in Workflow
+
+#### Morning Routine
+1. **Wake up** and assess how you feel
+2. **Record morning check-in** with sleep and energy metrics
+3. **Use insights** to plan your day accordingly
+
+#### Evening Routine
+1. **Reflect** on your day
+2. **Record evening check-in** with emotional patterns
+3. **Review patterns** to understand your mental health trends
+
+### Data Insights
+
+The check-in system provides valuable insights:
+- **Sleep patterns** and their impact on daily functioning
+- **Energy level trends** throughout the week
+- **Emotional patterns** and triggers
+- **Overwhelm cycles** and stress management
+- **Meaningful moments** tracking for gratitude practice
+
+### Database Structure
+
+The system uses a single `checkins` table with a `checkin_type` field:
+- **Efficient queries** for both morning and evening data
+- **Easy analytics** across different time periods
+- **Flexible schema** for future check-in types
+- **Data integrity** with proper foreign key relationships
+
+### Best Practices
+
+1. **Consistency**: Check in at similar times each day
+2. **Honesty**: Be truthful about your current state
+3. **Reflection**: Use check-ins as a mindfulness practice
+4. **Pattern Recognition**: Look for trends over time
+5. **Integration**: Combine with other mental health practices
+
 ## Development
 
 - The application uses FastAPI with automatic API documentation
