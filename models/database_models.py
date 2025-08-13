@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime, UTC
@@ -84,6 +84,10 @@ class Checkin(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
+# Create indexes for performance optimization
+Index('idx_checkins_user_type_time', Checkin.user_id, Checkin.checkin_type, Checkin.checkin_time)
+Index('idx_checkins_user_time', Checkin.user_id, Checkin.checkin_time)
+Index('idx_users_id', User.id)
 
 # Database dependency
 def get_db():

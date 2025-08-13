@@ -353,6 +353,14 @@
                             // Enable quick test buttons
                             document.querySelectorAll('#quickTestButtons button').forEach(btn => btn.disabled = false);
 
+                        } else if (data.type === 'streaming_chunk') {
+                            // Handle streaming chunks
+                            addStreamingChunk(data.content);
+                        } else if (data.type === 'streaming_complete') {
+                            // Handle streaming completion - show only the content
+                            addMessage(`🤖 ${data.content}`, 'received');
+                        } else if (data.type === 'existing_session') {
+                            addMessage(`🤖 ${data.content}`, 'received');
                         } else if (data.type === 'bot_response') {
                             addMessage(`🤖 ${data.message}`, 'received');
                         } else {

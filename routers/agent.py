@@ -19,7 +19,11 @@ from services.websocket_service import WebSocketService
 from services.mental_health_agent_service import MentalHealthAgentService
 from services.validation_service import ValidationService
 from services.redis_service import RedisService
+from services.db_service import DatabaseService
+from services.openai_service import LLMService
 from config import settings
+from langchain_core.messages import SystemMessage, HumanMessage
+from prompt_registry import *
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["Mental Health Agent"])
@@ -29,6 +33,7 @@ websocket_service = WebSocketService()
 agent_service = MentalHealthAgentService()
 validation_service = ValidationService()
 redis_service = RedisService()
+llm_service = LLMService()
 
 @router.websocket("/chat/{chat_id}")
 async def websocket_endpoint(websocket: WebSocket, chat_id: str):
@@ -54,18 +59,59 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
         
         # Store connection in websocket service
         await websocket_service.connect(websocket, chat_id, mock_user)
+
+        # Checking if we are talking about the morning or evening checkin
+        morning_checking = False
+        try:
+            if len(chat_id.split('_')) >= 3 and chat_id.split('_')[2] == '1':
+                morning_checking = False
+            else:
+                morning_checking = True
+        except:
+            morning_checking = True  # Default to morning if parsing fails
+
+        # Getting the checkin context from the database
+        checkin_context = DatabaseService.get_last_daily_checkin(db, mock_user['id'], morning_checking)
         
         # Check if chat_id exists in Redis
         chat_exists = redis_service.key_exists(chat_id)
-        bot_response = None
-        if chat_exists:
-            # Gretting agent will take over
-            pass
+        logger.info(f"Chat ID: {chat_id}, Morning checking: {morning_checking}, Redis exists: {chat_exists}")
+        
+        if not chat_exists:
+            # Greeting agent will take over using the (Checkin context)
+            messages = [
+                SystemMessage(greeting_Agent_prompt.format(data=checkin_context)),
+                HumanMessage("Create a greeting message for the user")
+            ]
+            
+            # Stream the response chunk by chunk
+            full_response = ""
+            async for chunk in llm_service.chatbot_response(messages):
+                if chunk:
+                    # Send each chunk as plain text (no JSON metadata)
+                    await websocket.send_text(chunk)
+                    full_response += chunk
+            
+            # Store the full response in Redis for conversation context
+            redis_service.set_key(chat_id, full_response)
         else:
-            # Conversation agent will take over
-            pass
-
-        await websocket.send_text(json.dumps(bot_response))
+            # Conversation agent will take over using (Checkin context, Conversational context)
+            conversational_context = redis_service.get_key(chat_id)
+            messages = [
+                SystemMessage(conversation_Agent_prompt.format(data=conversational_context)),
+                HumanMessage("Create a conversation message for the user")
+            ]
+            
+            # Stream the response chunk by chunk
+            full_response = ""
+            async for chunk in llm_service.chatbot_response(messages):
+                if chunk:
+                    # Send each chunk as plain text (no JSON metadata)
+                    await websocket.send_text(chunk)
+                    full_response += chunk
+            
+            # Store the full response in Redis for conversation context
+            redis_service.set_key(chat_id, full_response)
         
         # Keep connection alive and listen for messages
         while True:
@@ -76,35 +122,32 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 # Validate message format
                 is_valid_msg, msg_error = validation_service.validate_message_format(data)
                 if not is_valid_msg:
-                    error_response = validation_service.create_error_response(
-                        "validation_error", 
-                        msg_error,
-                        chat_id=chat_id,
-                        user_id=mock_user['id']
-                    )
-                    await websocket.send_text(json.dumps(error_response))
+                    await websocket.send_text(f"Error: {msg_error}")
                     continue
                 
-                # Process message with agent service
-                bot_response = await agent_service.process_user_message(data, str(mock_user['id']), db)
-                response = validation_service.create_success_response(
-                    "bot_response",
-                    bot_response.get('content', 'I\'m here to help you.'),
-                    chat_id=chat_id,
-                    user_id=mock_user['id']
-                )
+                # Process message with agent service by getting the conversational context from the redis
+                conversational_context = redis_service.get_key(chat_id)
                 
-                await websocket.send_text(json.dumps(response))
+                # Create messages for LLM with context
+                messages = [
+                    SystemMessage(f"You are a mental health support agent. Use this context: {conversational_context}"),
+                    HumanMessage(data)
+                ]
+                
+                # Stream the response chunk by chunk
+                full_response = ""
+                async for chunk in llm_service.chatbot_response(messages):
+                    if chunk:
+                        # Send each chunk as plain text (no JSON metadata)
+                        await websocket.send_text(chunk)
+                        full_response += chunk
+                
+                # Update Redis with new conversation context
+                redis_service.set_key(chat_id, full_response)
                 
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
-                error_response = validation_service.create_error_response(
-                    "processing_error",
-                    "An error occurred while processing your message",
-                    chat_id=chat_id,
-                    user_id=mock_user['id']
-                )
-                await websocket.send_text(json.dumps(error_response))
+                await websocket.send_text("An error occurred while processing your message")
                 break
                 
     except WebSocketDisconnect:
