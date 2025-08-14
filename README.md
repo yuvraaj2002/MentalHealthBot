@@ -488,16 +488,144 @@ The system uses a single `checkins` table with a `checkin_type` field:
 - **Flexible schema** for future check-in types
 - **Data integrity** with proper foreign key relationships
 
+## Conversational AI Agents
+
+The Mental Health Bot features an intelligent conversational system with two specialized agents that work together to provide personalized mental health support.
+
+### Agent Architecture
+
+The system employs a **dual-agent approach** that adapts based on the conversation context:
+
+1. **Greeting Agent**: Handles initial interactions and first-time conversations
+2. **Conversational Agent**: Manages ongoing conversations and follow-up interactions
+
+### How Agents Work
+
+#### Greeting Agent
+- **Trigger**: Activated when a user starts a new conversation (no existing chat context)
+- **Purpose**: Creates personalized greeting messages based on the user's check-in data
+- **Context**: Uses the user's most recent daily check-in information
+- **Behavior**: Generates warm, contextual greetings that acknowledge the user's current mental state
+
+#### Conversational Agent
+- **Trigger**: Activated for ongoing conversations (existing chat context in Redis)
+- **Purpose**: Maintains conversation flow and provides contextual responses
+- **Context**: Uses both check-in data and conversation history
+- **Behavior**: Responds to user messages while maintaining conversation continuity
+
+### Sliding Window Conversational Context
+
+The system implements an intelligent **sliding window approach** for managing conversation memory:
+
+#### Key Features
+- **Memory Limit**: Maintains only the last 20 conversation exchanges
+- **Automatic Cleanup**: Old conversations are automatically removed when the limit is exceeded
+- **Context Preservation**: Both user messages and agent responses are stored together
+- **TTL Management**: All conversation data automatically expires after 4 hours
+
+#### How It Works
+1. **New Conversation**: Greeting agent creates initial response and stores it
+2. **Ongoing Chat**: Each user message and agent response pair is appended to the context
+3. **Sliding Window**: When exceeding 20 conversations, oldest exchanges are automatically removed
+4. **Memory Efficiency**: Prevents unlimited memory growth while maintaining relevant context
+5. **Auto-Expiration**: Redis keys automatically expire after 4 hours for cleanup
+
+#### Context Structure
+```
+User: [User's message]
+Agent: [Agent's response]
+
+User: [Next user message]
+Agent: [Next agent response]
+
+... (up to 20 exchanges)
+```
+
+#### Benefits
+- **Relevant Context**: Always uses the most recent and relevant conversation history
+- **Memory Management**: Prevents memory leaks and excessive storage usage
+- **Performance**: Maintains optimal response times with manageable context size
+- **User Experience**: Provides consistent, contextual responses throughout the conversation
+- **Scalability**: Efficiently handles multiple concurrent conversations
+
+### WebSocket Communication
+
+The conversational system operates through WebSocket connections for real-time interaction:
+
+#### Endpoint
+```
+WS /chat/{chat_id}
+```
+
+#### Chat ID Format
+- **Morning Check-ins**: `{user_id}_{date}_0` (e.g., `123_2024-01-15_0`)
+- **Evening Check-ins**: `{user_id}_{date}_1` (e.g., `123_2024-01-15_1`)
+
+#### Message Flow
+1. **Connection**: User connects via WebSocket with chat ID
+2. **Context Loading**: System loads check-in data and conversation history
+3. **Agent Selection**: Greeting or conversational agent is selected based on context
+4. **Response Generation**: Agent generates contextual response using LLM
+5. **Streaming**: Response is streamed chunk-by-chunk to the user
+6. **Context Update**: New conversation is stored with sliding window management
+
+### Integration with Check-in System
+
+The conversational agents seamlessly integrate with the daily check-in system:
+
+- **Contextual Responses**: Agents use check-in data to personalize interactions
+- **Time-Aware**: Different behavior for morning vs. evening conversations
+- **Data-Driven**: Responses are informed by actual user mental health metrics
+- **Proactive Support**: Agents can reference check-in patterns for better assistance
+
 ### Best Practices
 
-1. **Consistency**: Check in at similar times each day
-2. **Honesty**: Be truthful about your current state
-3. **Reflection**: Use check-ins as a mindfulness practice
-4. **Pattern Recognition**: Look for trends over time
-5. **Integration**: Combine with other mental health practices
+1. **Regular Check-ins**: Complete daily check-ins for better agent context
+2. **Consistent Timing**: Use similar times for check-ins to establish patterns
+3. **Honest Responses**: Provide accurate check-in data for personalized support
+4. **Engagement**: Regular conversation helps agents learn your patterns
+5. **Context Awareness**: Agents remember your conversation style and preferences
 
-## Development
+## Conversational AI Agents
 
-- The application uses FastAPI with automatic API documentation
-- Access the interactive API docs at: http://localhost:8000/docs
-- Access the alternative API docs at: http://localhost:8000/redoc
+The Mental Health Bot features an intelligent conversational system with two specialized agents that work together to provide personalized mental health support.
+
+### Agent Architecture
+
+The system employs a **dual-agent approach** that adapts based on the conversation context:
+
+1. **Greeting Agent**: Handles initial interactions and first-time conversations
+2. **Conversational Agent**: Manages ongoing conversations and follow-up interactions
+
+### How Agents Work
+
+#### Greeting Agent
+- **Trigger**: Activated when a user starts a new conversation (no existing chat context)
+- **Purpose**: Creates personalized greeting messages based on the user's check-in data
+- **Context**: Uses the user's most recent daily check-in information
+- **Behavior**: Generates warm, contextual greetings that acknowledge the user's current mental state
+
+#### Conversational Agent
+- **Trigger**: Activated for ongoing conversations (existing chat context in Redis)
+- **Purpose**: Maintains conversation flow and provides contextual responses
+- **Context**: Uses both check-in data and conversation history
+- **Behavior**: Responds to user messages while maintaining conversation continuity
+
+### Sliding Window Conversational Context
+
+The system implements an intelligent **sliding window approach** for managing conversation memory:
+
+#### Key Features
+- **Memory Limit**: Maintains only the last 20 conversation exchanges
+- **Automatic Cleanup**: Old conversations are automatically removed when the limit is exceeded
+- **Context Preservation**: Both user messages and agent responses are stored together
+- **TTL Management**: All conversation data automatically expires after 4 hours
+
+#### How It Works
+1. **New Conversation**: Greeting agent creates initial response and stores it
+2. **Ongoing Chat**: Each user message and agent response pair is appended to the context
+3. **Sliding Window**: When exceeding 20 conversations, oldest exchanges are automatically removed
+4. **Memory Efficiency**: Prevents unlimited memory growth while maintaining relevant context
+5. **Auto-Expiration**: Redis keys automatically expire after 4 hours for cleanup
+
+#### Context Structure
