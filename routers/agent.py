@@ -80,8 +80,8 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
         if not chat_exists:
             # Greeting agent will take over using the (Checkin context)
             messages = [
-                SystemMessage(greeting_Agent_prompt.format(data=checkin_context)),
-                HumanMessage("Create a greeting message for the user")
+                SystemMessage(greeting_agent_prompt.format(checkin_context=checkin_context)),
+                HumanMessage("Please generate the greeting based on my check-in.")
             ]
             
             # Stream the response chunk by chunk
@@ -92,14 +92,14 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     await websocket.send_text(chunk)
                     full_response += chunk
             
-            # Store the full response in Redis for conversation context
-            redis_service.set_key(chat_id, full_response)
+            # Store the full response in Redis for conversation context with 4-hour TTL
+            redis_service.set_key(chat_id, full_response, expire_seconds=14400)
         else:
             # Conversation agent will take over using (Checkin context, Conversational context)
             conversational_context = redis_service.get_key(chat_id)
             messages = [
-                SystemMessage(conversation_Agent_prompt.format(data=conversational_context)),
-                HumanMessage("Create a conversation message for the user")
+                SystemMessage(conversation_agent_prompt.format(checkin_context=checkin_context, conversational_context=conversational_context)),
+                HumanMessage("Please generate the conversation message based on my check-in and the conversation history.")
             ]
             
             # Stream the response chunk by chunk
@@ -110,8 +110,8 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     await websocket.send_text(chunk)
                     full_response += chunk
             
-            # Store the full response in Redis for conversation context
-            redis_service.set_key(chat_id, full_response)
+            # Store the full response in Redis for conversation context with 4-hour TTL
+            redis_service.set_key(chat_id, full_response, expire_seconds=14400)
         
         # Keep connection alive and listen for messages
         while True:
@@ -143,7 +143,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                         full_response += chunk
                 
                 # Update Redis with new conversation context
-                redis_service.set_key(chat_id, full_response)
+                redis_service.set_key(chat_id, full_response, expire_seconds=14400)
                 
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
@@ -152,14 +152,12 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 
     except WebSocketDisconnect:
         websocket_service.disconnect(chat_id)
-        # Clean up Redis key on disconnect
-        redis_service.delete_key(chat_id)
+        # Redis key will automatically expire after 4 hours, no need to manually delete
         logger.info(f"User {chat_id} disconnected")
     except Exception as e:
         logger.error(f"WebSocket error for user {chat_id}: {e}")
         websocket_service.disconnect(chat_id)
-        # Clean up Redis key on error
-        redis_service.delete_key(chat_id)
+        # Redis key will automatically expire after 4 hours, no need to manually delete
         try:
             await websocket.close()
         except:
