@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
@@ -92,11 +92,16 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     await websocket.send_text(chunk)
                     full_response += chunk
             
-            # Store the full response in Redis for conversation context with 4-hour TTL
-            redis_service.set_key(chat_id, full_response, expire_seconds=14400)
+            # Store the greeting in Redis with sliding window approach
+            redis_service.append_conversation(
+                chat_id, 
+                "Initial greeting request", 
+                full_response, 
+                expire_seconds=14400
+            )
         else:
             # Conversation agent will take over using (Checkin context, Conversational context)
-            conversational_context = redis_service.get_key(chat_id)
+            conversational_context = redis_service.get_conversation_context(chat_id)
             messages = [
                 SystemMessage(conversation_agent_prompt.format(checkin_context=checkin_context, conversational_context=conversational_context)),
                 HumanMessage("Please generate the conversation message based on my check-in and the conversation history.")
@@ -110,8 +115,13 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     await websocket.send_text(chunk)
                     full_response += chunk
             
-            # Store the full response in Redis for conversation context with 4-hour TTL
-            redis_service.set_key(chat_id, full_response, expire_seconds=14400)
+            # Store the conversation in Redis with sliding window approach
+            redis_service.append_conversation(
+                chat_id, 
+                "Conversation continuation request", 
+                full_response, 
+                expire_seconds=14400
+            )
         
         # Keep connection alive and listen for messages
         while True:
@@ -126,7 +136,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     continue
                 
                 # Process message with agent service by getting the conversational context from the redis
-                conversational_context = redis_service.get_key(chat_id)
+                conversational_context = redis_service.get_conversation_context(chat_id)
                 
                 # Create messages for LLM with context
                 messages = [
@@ -142,8 +152,8 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                         await websocket.send_text(chunk)
                         full_response += chunk
                 
-                # Update Redis with new conversation context
-                redis_service.set_key(chat_id, full_response, expire_seconds=14400)
+                # Update Redis with new conversation context using sliding window
+                redis_service.append_conversation(chat_id, data, full_response, expire_seconds=14400)
                 
             except Exception as e:
                 logger.error(f"Error processing message: {e}")

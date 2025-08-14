@@ -88,4 +88,49 @@ class RedisService:
             logger.error(f"Error deleting key from Redis: {e}")
             return False
     
+    def append_conversation(self, key: str, user_message: str, agent_response: str, expire_seconds: Optional[int] = None) -> bool:
+        """Append a conversation pair to the context with sliding window (max 20 conversations)"""
+        if not self.is_connected():
+            logger.warning("Redis not connected, cannot append conversation")
+            return False
+        
+        try:
+            # Get existing conversations
+            existing_context = self.get_key(key) or ""
+            
+            # Create new conversation entry
+            conversation_entry = f"\nUser: {user_message}\nAgent: {agent_response}"
+            
+            # Split existing context into conversations
+            conversations = existing_context.split("\nUser: ") if existing_context else []
+            
+            # Remove empty first element if it exists
+            if conversations and not conversations[0].strip():
+                conversations = conversations[1:]
+            
+            # Add new conversation
+            conversations.append(conversation_entry)
+            
+            # Keep only last 20 conversations (sliding window)
+            if len(conversations) > 20:
+                conversations = conversations[-20:]
+            
+            # Reconstruct context
+            new_context = "\nUser: ".join(conversations)
+            
+            # Store with TTL
+            if expire_seconds:
+                self.redis_client.setex(key, expire_seconds, new_context)
+            else:
+                self.redis_client.set(key, new_context)
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error appending conversation to Redis: {e}")
+            return False
+    
+    def get_conversation_context(self, key: str) -> str:
+        """Get the conversation context for a chat"""
+        return self.get_key(key) or ""
+    
  
