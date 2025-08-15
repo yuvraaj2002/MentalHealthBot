@@ -15,3 +15,8 @@ passlib[bcrypt]==1.7.4
 redis>=4.5.0
 langchain_openai
 langchain_core
+
+# For documentation
+markdown
+reportlab
+Pillow

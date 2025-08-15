@@ -1,5 +1,15 @@
 import sys
 import os
+import logging
+
+# Configure logging to show in terminal
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # Add project root to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

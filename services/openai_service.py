@@ -10,7 +10,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 class LLMService:
     def __init__(self):
-        self.chat_openai = ChatOpenAI(api_key=settings.openai_api_key, model="gpt-4o", temperature=0.7,timeout=None, max_retries=2)
+        self.chat_openai = ChatOpenAI(api_key=settings.openai_api_key, model="gpt-4o", temperature=0.8,timeout=None, max_retries=2)
         self.logger = logging.getLogger(__name__)
 
     async def chatbot_response(self, messages):
@@ -18,14 +18,24 @@ class LLMService:
         Streams the response from the LLM as an async generator of text chunks.
         """
         try:
-            stream = self.chat_openai.stream(messages)
-            for chunk in stream:
-                # Each chunk is a ChatMessage; yield its content
-                if chunk and chunk.content:
-                    yield chunk.content
+            self.logger.info("🔄 [LLM] Starting OpenAI API request...")
+            
+            # Use invoke instead of stream for better async compatibility
+            response = await self.chat_openai.ainvoke(messages)
+            
+            if response and response.content:
+                self.logger.info(f"✅ [LLM] Response received ({len(response.content)} chars)")
+                # Yield the complete response as a single chunk
+                yield response.content
+            else:
+                self.logger.warning("⚠️ [LLM] Empty response from OpenAI")
+                yield "I'm sorry, I couldn't generate a response at the moment. Please try again."
+                
         except Exception as e:
-            self.logger.error(f"Error in chatbot_response: {e}")
-            yield f"Error: {str(e)}"
+            self.logger.error(f"❌ [LLM] Error in chatbot_response: {str(e)}")
+            import traceback
+            self.logger.error(f"📋 [LLM] Full traceback: {traceback.format_exc()}")
+            yield f"I'm experiencing technical difficulties. Please try again in a moment."
         
 
     # def get_response_with_retry(self, messages, keys_to_check):

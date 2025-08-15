@@ -38,12 +38,24 @@ async def signup(user: UserCreate, db: Session = Depends(get_db)):
         )
     
     # Create new user
+    gender_int = None
+    if user.gender is not None:
+        gender_map = {'Male': 0, 'Female': 1, 'Other': 2}
+        gender_int = gender_map.get(user.gender)
+        if gender_int is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid gender value. Must be one of: {', '.join(gender_map.keys())}"
+            )
+    
     db_user = User(
         first_name=user.first_name,
         last_name=user.last_name,
         username=user.username,
         email=user.email,
-        hashed_password=get_password_hash(user.password)
+        hashed_password=get_password_hash(user.password),
+        age=user.age,
+        gender=gender_int  # Store as integer in database
     )
     
     try:
@@ -112,16 +124,8 @@ async def update_user_info(
     if user_update.last_name is not None:
         current_user.last_name = user_update.last_name
     if user_update.username is not None:
-        # Check if username is already taken by another user
-        if (db.query(User)
-            .filter(User.username == user_update.username)
-            .filter(User.id != current_user.id)
-            .first()):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already taken"
-            )
         current_user.username = user_update.username
+        
     if user_update.email is not None:
         # Check if email is already taken
         if (db.query(User)
@@ -138,7 +142,16 @@ async def update_user_info(
     if user_update.age is not None:
         current_user.age = user_update.age
     if user_update.gender is not None:
-        current_user.gender = user_update.gender
+        # Convert string gender to integer for database storage
+        gender_map = {'Male': 0, 'Female': 1, 'Other': 2}
+        gender_int = gender_map.get(user_update.gender)
+        if gender_int is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid gender value. Must be one of: {', '.join(gender_map.keys())}"
+            )
+        current_user.gender = gender_int
+        logger.info(f"Updated gender for user {current_user.id} from '{user_update.gender}' to {gender_int}")
     
     try:
         db.commit()

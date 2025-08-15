@@ -218,7 +218,7 @@
     <div class="container">
         <div class="header">
             <h1>🧠 Mental Health Bot</h1>
-            <p>WebSocket Connection Test Interface (Test Mode - No Authentication)</p>
+            <p>WebSocket Connection Test Interface (JWT Authentication Required)</p>
         </div>
 
         <div class="content">
@@ -233,7 +233,7 @@
                 <input type="text" id="chatId" value="test_chat_123" placeholder="Enter chat ID">
             </div>
 
-            <div class="form-group" style="display: none;">
+            <div class="form-group">
                 <label for="authToken">JWT Token:</label>
                 <input type="text" id="authToken" placeholder="Enter your JWT token" style="font-family: monospace;">
             </div>
@@ -316,14 +316,26 @@
                 return;
             }
 
-            // Convert HTTP to WebSocket URL (no token needed for local testing)
+            // Convert HTTP to WebSocket URL
             const wsUrl = baseUrl.replace('http://', 'ws://').replace('https://', 'wss://') + endpoint + chatId;
 
             updateStatus('connecting', 'Connecting...');
             addMessage(`Connecting to ${wsUrl}...`, 'system');
 
             try {
-                ws = new WebSocket(wsUrl);
+                // Get JWT token
+                const authTokenInput = document.getElementById('authToken');
+                const authToken = authTokenInput.value.trim();
+                if (!authToken) {
+                    addMessage('Please enter your JWT token', 'system');
+                    return;
+                }
+
+                // Create WebSocket with token in URL
+                const wsUrlWithToken = wsUrl + `?token=${encodeURIComponent(authToken)}`;
+                console.log('Connecting to WebSocket:', wsUrlWithToken);
+                console.log('Token being sent:', authToken);
+                ws = new WebSocket(wsUrlWithToken);
 
                 ws.onopen = function () {
                     addMessage('WebSocket connection opened', 'system');
@@ -331,43 +343,44 @@
 
                 ws.onmessage = function (event) {
                     try {
-                        const data = JSON.parse(event.data);
+                        // Our backend now sends plain text responses, not JSON
+                        const message = event.data;
 
-                        if (data.type === 'connection') {
-                            isConnected = true;
-                            updateStatus('connected', 'Connected');
-                            addMessage(`✅ ${data.message}`, 'received');
+                        if (message && message.trim()) {
+                            // Check if this is the first message (greeting)
+                            if (!isConnected) {
+                                isConnected = true;
+                                updateStatus('connected', 'Connected');
 
-                            // Update connection info
-                            document.getElementById('connectionInfo').style.display = 'block';
-                            document.getElementById('connectionUrl').textContent = wsUrl;
-                            document.getElementById('connectionChatId').textContent = chatId;
-                            document.getElementById('connectionUser').textContent = data.user_id || 'Test User';
+                                // Update connection info
+                                document.getElementById('connectionInfo').style.display = 'block';
+                                document.getElementById('connectionUrl').textContent = wsUrl;
+                                document.getElementById('connectionChatId').textContent = chatId;
+                                document.getElementById('connectionUser').textContent = 'Connected User';
 
-                            // Enable controls
-                            document.getElementById('messageInput').disabled = false;
-                            document.getElementById('sendBtn').disabled = false;
-                            document.getElementById('connectBtn').disabled = true;
-                            document.getElementById('disconnectBtn').disabled = false;
+                                // Enable controls
+                                document.getElementById('messageInput').disabled = false;
+                                document.getElementById('sendBtn').disabled = false;
+                                document.getElementById('connectBtn').disabled = true;
+                                document.getElementById('disconnectBtn').disabled = false;
 
-                            // Enable quick test buttons
-                            document.querySelectorAll('#quickTestButtons button').forEach(btn => btn.disabled = false);
+                                // Enable quick test buttons
+                                document.querySelectorAll('button[onclick^="sendQuickMessage"]').forEach(btn => btn.disabled = false);
+                            }
 
-                        } else if (data.type === 'streaming_chunk') {
-                            // Handle streaming chunks
-                            addStreamingChunk(data.content);
-                        } else if (data.type === 'streaming_complete') {
-                            // Handle streaming completion - show only the content
-                            addMessage(`🤖 ${data.content}`, 'received');
-                        } else if (data.type === 'existing_session') {
-                            addMessage(`🤖 ${data.content}`, 'received');
-                        } else if (data.type === 'bot_response') {
-                            addMessage(`🤖 ${data.message}`, 'received');
-                        } else {
-                            addMessage(`📨 ${data.message}`, 'received');
+                            // Remove the "Thinking..." message if it exists
+                            const thinkingMessages = document.querySelectorAll('.message.system');
+                            thinkingMessages.forEach(msg => {
+                                if (msg.textContent === '🤖 Thinking...') {
+                                    msg.remove();
+                                }
+                            });
+
+                            // Display the bot's response
+                            addMessage(`🤖 ${message}`, 'received');
                         }
                     } catch (e) {
-                        addMessage(`Raw message: ${event.data}`, 'received');
+                        addMessage(`❌ Error processing message: ${e.message}`, 'system');
                     }
                 };
 
@@ -384,7 +397,7 @@
                     document.getElementById('connectionInfo').style.display = 'none';
 
                     // Disable quick test buttons
-                    document.querySelectorAll('#quickTestButtons button').forEach(btn => btn.disabled = true);
+                    document.querySelectorAll('button[onclick^="sendQuickMessage"]').forEach(btn => btn.disabled = true);
                 };
 
                 ws.onerror = function (error) {
@@ -409,17 +422,42 @@
             const messageInput = document.getElementById('messageInput');
             const message = messageInput.value.trim();
 
-            if (message && ws && isConnected) {
+            if (!message) {
+                addMessage('Please type a message first', 'system');
+                return;
+            }
+
+            if (!ws || !isConnected) {
+                addMessage('❌ Not connected to WebSocket', 'system');
+                return;
+            }
+
+            try {
                 addMessage(`👤 ${message}`, 'sent');
                 ws.send(message);
                 messageInput.value = '';
+
+                // Show typing indicator
+                addMessage('🤖 Thinking...', 'system');
+            } catch (error) {
+                addMessage(`❌ Failed to send message: ${error.message}`, 'system');
             }
         }
 
         function sendQuickMessage(message) {
-            if (ws && isConnected) {
+            if (!ws || !isConnected) {
+                addMessage('❌ Not connected to WebSocket', 'system');
+                return;
+            }
+
+            try {
                 addMessage(`👤 ${message}`, 'sent');
                 ws.send(message);
+
+                // Show typing indicator
+                addMessage('🤖 Thinking...', 'system');
+            } catch (error) {
+                addMessage(`❌ Failed to send message: ${error.message}`, 'system');
             }
         }
 

@@ -44,7 +44,7 @@ async def get_current_user(
     token: HTTPBearer = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """Get current user from JWT token"""
+    """Get current user from JWT token (for HTTP endpoints)"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -54,6 +54,34 @@ async def get_current_user(
     try:
         payload = jwt.decode(
             token.credentials, 
+            settings.jwt_secret_key, 
+            algorithms=[settings.jwt_algorithm]
+        )
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(User).filter(User.email == token_data.email).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+async def get_current_user_from_token(
+    token: str,
+    db: Session
+) -> User:
+    """Get current user from raw JWT token string (for WebSocket)"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+    )
+    
+    try:
+        payload = jwt.decode(
+            token, 
             settings.jwt_secret_key, 
             algorithms=[settings.jwt_algorithm]
         )

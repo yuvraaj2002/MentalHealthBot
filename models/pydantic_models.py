@@ -18,6 +18,17 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8)
+    age: Optional[int] = None
+    gender: Optional[str] = Field(None, description="Gender: 'Male', 'Female', or 'Other'")
+    
+    @field_validator('gender')
+    @classmethod
+    def validate_gender(cls, v):
+        if v is not None:
+            valid_genders = ['Male', 'Female', 'Other']
+            if v not in valid_genders:
+                raise ValueError(f"Gender must be one of: {', '.join(valid_genders)}")
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -30,7 +41,16 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(None, min_length=8)
     age: Optional[int] = None
-    gender: Optional[str] = None
+    gender: Optional[str] = Field(None, description="Gender: 'Male', 'Female', or 'Other'")
+    
+    @field_validator('gender')
+    @classmethod
+    def validate_gender(cls, v):
+        if v is not None:
+            valid_genders = ['Male', 'Female', 'Other']
+            if v not in valid_genders:
+                raise ValueError(f"Gender must be one of: {', '.join(valid_genders)}")
+        return v
 
 class UserResponse(BaseModel):
     id: int
@@ -39,10 +59,19 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     age: Optional[int] = None
-    gender: Optional[str] = None
+    gender: Optional[str] = None  # Will be converted from integer to string
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    
+    @field_validator('gender', mode='before')
+    @classmethod
+    def convert_gender_to_string(cls, v):
+        """Convert integer gender to readable string"""
+        if v is not None:
+            gender_map = {0: 'Male', 1: 'Female', 2: 'Other'}
+            return gender_map.get(v, 'Unknown')
+        return v
 
     @field_validator('username')
     @classmethod

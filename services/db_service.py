@@ -1,19 +1,12 @@
-import sys
-import os
 import logging
 from typing import Optional, Dict, Any, Union
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from datetime import datetime, date, UTC
 from rich import print
-
-# Add project root to path for imports
-ROOT_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT_PATH not in sys.path:
-    sys.path.append(ROOT_PATH)
-
 from models.database_models import Checkin, User, get_db
 from models.pydantic_models import MorningCheckin, EveningCheckin
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +63,6 @@ class DatabaseService:
             if is_morning:
                 # Morning checkin data
                 checkin_data = {
-                    "checkin_time": "morning",
                     "sleep_quality": result.sleep_quality,
                     "body_sensation": result.body_sensation,
                     "energy_level": result.energy_level,
@@ -80,7 +72,6 @@ class DatabaseService:
             else:
                 # Evening checkin data
                 checkin_data = {
-                    "checkin_time": "evening",
                     "emotion_category": result.emotion_category,
                     "overwhelm_amount": result.overwhelm_amount,
                     "emotion_in_moment": result.emotion_in_moment,
@@ -93,7 +84,7 @@ class DatabaseService:
                 "first_name": result.first_name,
                 "last_name": result.last_name,
                 "age": result.age,
-                "gender": result.gender
+                "gender": DatabaseService._get_gender_text(result.gender)
             }
             
             # Combine checkin data with user context
@@ -259,15 +250,8 @@ class DatabaseService:
                 "error": str(e)
             }
 
-
 if __name__ == "__main__":
-    from models.database_models import Base, engine
-    Base.metadata.create_all(bind=engine)
-    
     # Use get_db() function for proper session management
     db = next(get_db())
-    try:
-        result = DatabaseService.get_last_daily_checkin(db, 1, True)
-        print(result)
-    finally:
-        db.close()
+    result = DatabaseService.get_last_daily_checkin(db, 2, True)
+    print(result)

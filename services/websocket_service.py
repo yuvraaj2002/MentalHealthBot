@@ -14,8 +14,7 @@ class WebSocketService:
         self.connection_metadata: Dict[str, Dict[str, Any]] = {}
     
     async def connect(self, websocket: WebSocket, user_id: str, user_info: Optional[Dict[str, Any]] = None):
-        """Accept WebSocket connection and store user information"""
-        await websocket.accept()
+        """Store WebSocket connection and user information (connection already accepted)"""
         self.active_connections[user_id] = websocket
         
         # Store connection metadata
