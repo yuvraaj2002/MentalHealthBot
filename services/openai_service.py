@@ -38,7 +38,7 @@ class LLMService:
             yield f"I'm experiencing technical difficulties. Please try again in a moment."
 
 
-    async def get_chat_summary(self, checkin_context: str, conversational_context: str):
+    async def get_chat_summary(self, checkin_context: str):
         """
         Generates a summary of the chat session using LangChain and GPT-4o-mini.
         """

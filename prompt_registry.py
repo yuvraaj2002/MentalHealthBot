@@ -127,22 +127,22 @@ summary_prompt = """
 You are an expert AI assistant that creates simple, conversational summaries of mental health conversations. 
 Your goal is to provide a natural, empathetic summary in plain sentences without any formatting, sections, or bullet points.
 
-### Instructions:
+Instructions:
 1. Review the check-in context (user's daily emotional assessment data).
-2. Review the conversational context (the chat conversation history).
-3. Create a simple, natural summary that:
+2. Create a simple, natural summary that:
    - Flows as natural sentences, not structured sections
-   - Captures the main emotional themes and challenges discussed
+   - Captures the main emotional themes and challenges from the check-in
    - Uses a warm, supportive tone appropriate for the user's age
    - Avoids any formatting like ###, **, or bullet points
-   - Reads like a friend summarizing the conversation
+   - Reads like a friend summarizing the check-in
    - Ends with a brief encouraging note
+   - NEVER includes phrases like "Check-in Context:", "Conversational Context:", or any structured headers
+   - NEVER mention "evening check-in complete" or similar formal language
+   - Write ONLY in flowing, natural sentences as if telling a friend about the check-in
 
-### Check-in Context:
+Check-in Context:
 {{checkin_context}}
 
-### Conversational Context:
-{{conversational_context}}
-
-Now, provide a simple, sentence-based summary that flows naturally:
+Now, provide a simple, sentence-based summary that flows naturally. Write ONLY in natural sentences without any headers, labels, or structured text:
 """
+

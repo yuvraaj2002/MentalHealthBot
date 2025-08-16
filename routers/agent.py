@@ -346,10 +346,6 @@ async def get_chat_summary(chat_id: str, current_user: User = Depends(get_curren
             detail=chat_error
         )
 
-    # Getting the conversational context from the redis against a chat id
-    conversational_context = redis_service.get_conversation_context(chat_id)
-    logger.info(f"[SYSTEM] Conversational context: {conversational_context}")
-
     # Getting the checkin context from the database
     db = next(get_db())
     morning_checking = False
@@ -367,7 +363,7 @@ async def get_chat_summary(chat_id: str, current_user: User = Depends(get_curren
     logger.info(f"[SYSTEM] Checkin context: {checkin_context_string}")
 
     # Getting the summary of the chat session
-    summary = await llm_service.get_chat_summary(checkin_context_string, conversational_context)
+    summary = await llm_service.get_chat_summary(checkin_context_string)
     logger.info(f"[SYSTEM] Summary: {summary}")
 
     # Save the summary to the database
