@@ -99,13 +99,13 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
             morning_checking = True  # Default to morning if parsing fails
 
         # Getting the checkin context from the database
-        logger.info("🔍 [SYSTEM] Retrieving checkin context from database...")
+        logger.info("[SYSTEM] Retrieving checkin context from database...")
         checkin_context = DatabaseService.get_last_daily_checkin(db, current_user.id, morning_checking)
-        logger.info(f"📊 [SYSTEM] Checkin context retrieved: {checkin_context}")
+        logger.info(f"[SYSTEM] Checkin context retrieved: {checkin_context}")
         
         # Handle case where no checkin context is available
         if not checkin_context:
-            logger.warning(f"⚠️ [SYSTEM] No checkin context found for user {current_user.id}, using default context")
+            logger.warning(f"[SYSTEM] No checkin context found for user {current_user.id}, using default context")
             checkin_context = {
                 "first_name": current_user.first_name,
                 "last_name": current_user.last_name,
@@ -114,24 +114,18 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 "default_message": "No recent check-in data available. Let's start fresh."
             }
         
-        # Convert checkin context to readable string format
-        def dict_to_string(data):
-            if not data:
-                return "No data available"
-            return ", ".join([f"{key}: {value}" for key, value in data.items()])
-        
-        checkin_context_string = dict_to_string(checkin_context)
+        checkin_context_string = validation_service.dict_to_string(checkin_context)
         
         # Check if chat_id exists in Redis
         chat_exists = redis_service.key_exists(chat_id)
-        logger.info(f"🔍 [SYSTEM] Chat analysis - ID: {chat_id}, Morning: {morning_checking}, Redis exists: {chat_exists}")
-        logger.info(f"📋 [SYSTEM] Checkin context: {checkin_context_string}")
+        logger.info(f"[SYSTEM] Chat analysis - ID: {chat_id}, Morning: {morning_checking}, Redis exists: {chat_exists}")
+        logger.info(f"[SYSTEM] Checkin context: {checkin_context_string}")
         
         if not chat_exists:
             # GREETING AGENT - First time user connection
-            logger.info("🤖 [GREETING AGENT] Starting new conversation")
+            logger.info("[GREETING AGENT] Starting new conversation")
             try:
-                logger.info(f"📝 [GREETING AGENT] Formatting prompt with context: {checkin_context_string}")
+                logger.info(f"[GREETING AGENT] Formatting prompt with context: {checkin_context_string}")
                 
                 # Use string replacement instead of .format() to avoid conflicts
                 formatted_prompt = greeting_agent_prompt.replace("{{checkin_context}}", checkin_context_string)
@@ -140,20 +134,20 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     SystemMessage(formatted_prompt),
                     HumanMessage("Please generate the greeting based on my check-in.")
                 ]
-                logger.info("✅ [GREETING AGENT] Prompt formatted successfully")
+                logger.info("[GREETING AGENT] Prompt formatted successfully")
             except Exception as format_error:
-                logger.error(f"❌ [GREETING AGENT] Error formatting prompt: {format_error}")
+                logger.error(f"[GREETING AGENT] Error formatting prompt: {format_error}")
                 # Fallback to a simple greeting
                 messages = [
                     SystemMessage(f"You are Kay, a mental health support agent. Greet the user {current_user.first_name} warmly and ask how they are feeling today."),
                     HumanMessage("Please generate a warm greeting.")
                 ]
-                logger.info("🔄 [GREETING AGENT] Using fallback prompt")
+                logger.info("[GREETING AGENT] Using fallback prompt")
             
             # Get response from LLM
             full_response = ""
             try:
-                logger.info("🔄 [GREETING AGENT] Generating response from LLM...")
+                logger.info("[GREETING AGENT] Generating response from LLM...")
                 async for chunk in llm_service.chatbot_response(messages):
                     if chunk:
                         full_response = chunk  # Now we get the complete response in one chunk
@@ -162,17 +156,17 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 # Send complete response
                 if websocket.client_state.value == 1:  # Check if WebSocket is still open
                     await websocket.send_text(full_response)
-                    logger.info(f"✅ [GREETING AGENT] Response sent successfully ({len(full_response)} chars)")
-                    logger.info(f"📤 [GREETING AGENT] Response preview: {full_response[:100]}...")
+                    logger.info(f"[GREETING AGENT] Response sent successfully ({len(full_response)} chars)")
+                    logger.info(f"[GREETING AGENT] Response preview: {full_response[:100]}...")
                 else:
-                    logger.warning("⚠️ [GREETING AGENT] WebSocket closed, cannot send response")
+                    logger.warning("[GREETING AGENT] WebSocket closed, cannot send response")
                     return
             except Exception as stream_error:
-                logger.error(f"❌ [GREETING AGENT] Error getting LLM response: {stream_error}")
+                logger.error(f"[GREETING AGENT] Error getting LLM response: {stream_error}")
                 error_message = "I'm having trouble generating a response right now. Please try again."
                 await websocket.send_text(error_message)
                 full_response = error_message
-                logger.info("🔄 [GREETING AGENT] Sent error fallback message")
+                logger.info("[GREETING AGENT] Sent error fallback message")
             
             # Store the greeting in Redis with sliding window approach
             redis_service.append_conversation(
@@ -181,24 +175,24 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 full_response, 
                 expire_seconds=14400
             )
-            logger.info("💾 [GREETING AGENT] Conversation stored in Redis")
+            logger.info("[GREETING AGENT] Conversation stored in Redis")
         else:
             # CONVERSATION AGENT - Continuing existing conversation
-            logger.info("🤖 [CONVERSATION AGENT] Continuing existing conversation")
+            logger.info("[CONVERSATION AGENT] Continuing existing conversation")
             conversational_context = redis_service.get_conversation_context(chat_id)
-            logger.info(f"📚 [CONVERSATION AGENT] Retrieved context from Redis: {conversational_context[:100] if conversational_context else 'None'}...")
+            logger.info(f"[CONVERSATION AGENT] Retrieved context from Redis: {conversational_context[:100] if conversational_context else 'None'}...")
             
             # Handle empty conversation context
             if not conversational_context:
-                logger.info("⚠️ [CONVERSATION AGENT] Empty context, treating as new conversation")
+                logger.info("[CONVERSATION AGENT] Empty context, treating as new conversation")
                 conversational_context = "This is the beginning of our conversation."
             
             try:
                 # Convert contexts to readable string format
                 checkin_string = dict_to_string(checkin_context)
                 conversation_string = str(conversational_context) if conversational_context else "No conversation context available"
-                logger.info(f"📝 [CONVERSATION AGENT] Formatting prompt with checkin: {checkin_string}")
-                logger.info(f"💬 [CONVERSATION AGENT] Conversation context: {conversation_string[:100]}...")
+                logger.info(f"[CONVERSATION AGENT] Formatting prompt with checkin: {checkin_string}")
+                logger.info(f"[CONVERSATION AGENT] Conversation context: {conversation_string[:100]}...")
                 
                 # Use string replacement instead of .format() to avoid conflicts
                 formatted_prompt = conversation_agent_prompt.replace("{{checkin_context}}", checkin_string)
@@ -208,20 +202,20 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     SystemMessage(formatted_prompt),
                     HumanMessage("Please generate the conversation message based on my check-in and the conversation history.")
                 ]
-                logger.info("✅ [CONVERSATION AGENT] Prompt formatted successfully")
+                logger.info("[CONVERSATION AGENT] Prompt formatted successfully")
             except Exception as format_error:
-                logger.error(f"❌ [CONVERSATION AGENT] Error formatting prompt: {format_error}")
+                logger.error(f"[CONVERSATION AGENT] Error formatting prompt: {format_error}")
                 # Fallback to a simple conversation prompt
                 messages = [
                     SystemMessage(f"You are Kay, a mental health support agent. Continue the conversation with {current_user.first_name} based on the context: {conversational_context}"),
                     HumanMessage("Please continue the conversation naturally.")
                 ]
-                logger.info("🔄 [CONVERSATION AGENT] Using fallback prompt")
+                logger.info("[CONVERSATION AGENT] Using fallback prompt")
             
             # Get response from LLM
             full_response = ""
             try:
-                logger.info("🔄 [CONVERSATION AGENT] Generating response from LLM...")
+                logger.info("[CONVERSATION AGENT] Generating response from LLM...")
                 async for chunk in llm_service.chatbot_response(messages):
                     if chunk:
                         full_response = chunk  # Now we get the complete response in one chunk
@@ -230,17 +224,17 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 # Send complete response
                 if websocket.client_state.value == 1:  # Check if WebSocket is still open
                     await websocket.send_text(full_response)
-                    logger.info(f"✅ [CONVERSATION AGENT] Response sent successfully ({len(full_response)} chars)")
-                    logger.info(f"📤 [CONVERSATION AGENT] Response preview: {full_response[:100]}...")
+                    logger.info(f"[CONVERSATION AGENT] Response sent successfully ({len(full_response)} chars)")
+                    logger.info(f"[CONVERSATION AGENT] Response preview: {full_response[:100]}...")
                 else:
-                    logger.warning("⚠️ [CONVERSATION AGENT] WebSocket closed, cannot send response")
+                    logger.warning("[CONVERSATION AGENT] WebSocket closed, cannot send response")
                     return
             except Exception as stream_error:
-                logger.error(f"❌ [CONVERSATION AGENT] Error getting LLM response: {stream_error}")
+                logger.error(f"[CONVERSATION AGENT] Error getting LLM response: {stream_error}")
                 error_message = "I'm having trouble generating a response right now. Please try again."
                 await websocket.send_text(error_message)
                 full_response = error_message
-                logger.info("🔄 [CONVERSATION AGENT] Sent error fallback message")
+                logger.info("[CONVERSATION AGENT] Sent error fallback message")
             
             # Store the conversation in Redis with sliding window approach
             redis_service.append_conversation(
@@ -249,7 +243,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                 full_response, 
                 expire_seconds=14400
             )
-            logger.info("💾 [CONVERSATION AGENT] Conversation stored in Redis")
+            logger.info("[CONVERSATION AGENT] Conversation stored in Redis")
         
         # Keep connection alive and listen for messages
         while True:
@@ -264,38 +258,38 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     continue
                 
                 # USER MESSAGE PROCESSING - Handle ongoing conversation
-                logger.info("💬 [USER MESSAGE] Processing user input")
+                logger.info("[USER MESSAGE] Processing user input")
                 conversational_context = redis_service.get_conversation_context(chat_id)
                 
                 # Handle empty conversation context
                 if not conversational_context:
                     conversational_context = "This is the beginning of our conversation."
-                    logger.info("⚠️ [USER MESSAGE] Empty context, treating as new conversation")
+                    logger.info("[USER MESSAGE] Empty context, treating as new conversation")
                 
                 # Create messages for LLM with context
                 try:
                     # Convert conversational context to readable string format
                     context_string = str(conversational_context) if conversational_context else "No context available"
-                    logger.info(f"📝 [USER MESSAGE] Creating LLM messages with context: {context_string[:100]}...")
+                    logger.info(f"[USER MESSAGE] Creating LLM messages with context: {context_string[:100]}...")
                     
                     messages = [
                         SystemMessage(f"You are a mental health support agent. Use this context: {context_string}"),
                         HumanMessage(data)
                     ]
-                    logger.info("✅ [USER MESSAGE] Messages created successfully")
+                    logger.info("[USER MESSAGE] Messages created successfully")
                 except Exception as msg_error:
-                    logger.error(f"❌ [USER MESSAGE] Error creating messages: {msg_error}")
+                    logger.error(f"[USER MESSAGE] Error creating messages: {msg_error}")
                     # Fallback to simple message
                     messages = [
                         SystemMessage("You are a mental health support agent. Be supportive and helpful."),
                         HumanMessage(data)
                     ]
-                    logger.info("🔄 [USER MESSAGE] Using fallback messages")
+                    logger.info("[USER MESSAGE] Using fallback messages")
                 
                 # Get response from LLM
                 full_response = ""
                 try:
-                    logger.info("🔄 [USER MESSAGE] Generating response from LLM...")
+                    logger.info("[USER MESSAGE] Generating response from LLM...")
                     async for chunk in llm_service.chatbot_response(messages):
                         if chunk:
                             full_response = chunk  # Now we get the complete response in one chunk
@@ -304,21 +298,21 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
                     # Send complete response
                     if websocket.client_state.value == 1:  # Check if WebSocket is still open
                         await websocket.send_text(full_response)
-                        logger.info(f"✅ [USER MESSAGE] Response sent successfully ({len(full_response)} chars)")
-                        logger.info(f"📤 [USER MESSAGE] Response preview: {full_response[:100]}...")
+                        logger.info(f"[USER MESSAGE] Response sent successfully ({len(full_response)} chars)")
+                        logger.info(f"[USER MESSAGE] Response preview: {full_response[:100]}...")
                     else:
-                        logger.warning("⚠️ [USER MESSAGE] WebSocket closed, cannot send response")
+                        logger.warning("[USER MESSAGE] WebSocket closed, cannot send response")
                         return
                 except Exception as stream_error:
-                    logger.error(f"❌ [USER MESSAGE] Error getting LLM response: {stream_error}")
+                    logger.error(f"[USER MESSAGE] Error getting LLM response: {stream_error}")
                     error_message = "I'm having trouble generating a response right now. Please try again."
                     await websocket.send_text(error_message)
                     full_response = error_message
-                    logger.info("🔄 [USER MESSAGE] Sent error fallback message")
+                    logger.info("[USER MESSAGE] Sent error fallback message")
                 
                 # Update Redis with new conversation context using sliding window
                 redis_service.append_conversation(chat_id, data, full_response, expire_seconds=14400)
-                logger.info("💾 [USER MESSAGE] Conversation updated in Redis")
+                logger.info("[USER MESSAGE] Conversation updated in Redis")
                 
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
@@ -337,6 +331,53 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
             await websocket.close()
         except:
             pass
+
+
+# Authenticated Get endpoint to get the summary of the chat session
+@router.get("/chat/summary/{chat_id}")
+async def get_chat_summary(chat_id: str, current_user: User = Depends(get_current_active_user)):
+    """Get the summary of the chat session"""
+
+    # Adding chat id validations
+    is_valid_chat, chat_error = validation_service.validate_chat_id(chat_id)
+    if not is_valid_chat:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=chat_error
+        )
+
+    # Getting the conversational context from the redis against a chat id
+    conversational_context = redis_service.get_conversation_context(chat_id)
+
+    # Getting the checkin context from the database
+    db = next(get_db())
+    morning_checking = False
+    if len(chat_id.split('_')) > 2:
+        morning_checking = chat_id.split('_')[2] == '1'
+    else:
+        morning_checking = True
+
+    # Getting the checkin context and conversational context
+    checkin_context = DatabaseService.get_last_daily_checkin(db, current_user.id, morning_checking)
+    checkin_context_string = validation_service.dict_to_string(checkin_context)
+
+    # Getting the summary of the chat session
+    summary = await llm_service.get_chat_summary(checkin_context_string, conversational_context)
+
+    # Save the summary to the database
+    db = next(get_db())
+    saved_summary = DatabaseService.save_chat_summary(db, current_user.id, chat_id, summary)
+    
+    if not saved_summary:
+        logger.error(f"Failed to save chat summary for chat_id: {chat_id}")
+        # Continue with the response even if saving fails
+
+    return {
+        "chat_id": chat_id,
+        "summary": summary
+    }
+
+
 
 
 
@@ -491,3 +532,76 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: str):
 #             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 #             detail="Failed to send message"
 #         )
+
+# @router.get("/chat/summaries")
+# async def get_user_chat_summaries(
+#     current_user: User = Depends(get_current_active_user),
+#     limit: int = 50
+# ):
+#     """Get all chat summaries for the current user"""
+    
+#     db = next(get_db())
+#     summaries = DatabaseService.get_user_chat_summaries(db, current_user.id, limit)
+    
+#     return summaries
+
+
+# @router.get("/chat/summary/saved/{chat_id}")
+# async def get_saved_chat_summary(
+#     chat_id: str, 
+#     current_user: User = Depends(get_current_active_user)
+# ):
+#     """Get a saved chat summary by chat_id (only for the current user)"""
+    
+#     # Validate chat ID
+#     is_valid_chat, chat_error = validation_service.validate_chat_id(chat_id)
+#     if not is_valid_chat:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=chat_error
+#         )
+    
+#     db = next(get_db())
+#     summary = DatabaseService.get_chat_summary(db, chat_id)
+    
+#     if not summary:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="Chat summary not found"
+#         )
+    
+#     # Ensure the summary belongs to the current user
+#     if summary["user_id"] != current_user.id:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Access denied to this chat summary"
+#         )
+    
+#     return summary
+
+
+# @router.delete("/chat/summary/{chat_id}")
+# async def delete_chat_summary(
+#     chat_id: str,
+#     current_user: User = Depends(get_current_active_user)
+# ):
+#     """Delete a chat summary (only for the current user)"""
+    
+#     # Validate chat ID
+#     is_valid_chat, chat_error = validation_service.validate_chat_id(chat_id)
+#     if not is_valid_chat:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=chat_error
+#         )
+    
+#     db = next(get_db())
+#     success = DatabaseService.delete_chat_summary(db, chat_id, current_user.id)
+    
+#     if not success:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="Chat summary not found or access denied"
+#         )
+    
+#     return {"message": "Chat summary deleted successfully", "chat_id": chat_id}

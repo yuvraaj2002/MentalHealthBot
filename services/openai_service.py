@@ -36,8 +36,25 @@ class LLMService:
             import traceback
             self.logger.error(f"📋 [LLM] Full traceback: {traceback.format_exc()}")
             yield f"I'm experiencing technical difficulties. Please try again in a moment."
-        
 
+
+    async def get_chat_summary(self, checkin_context: str, conversational_context: str):
+        """
+        Generates a summary of the chat session using LangChain and GPT-4o-mini.
+        """
+        try:
+            messages = [
+                SystemMessage(summary_prompt.format(checkin_context=checkin_context, conversational_context=conversational_context)),
+                HumanMessage("Please provide a summary of the chat session.")
+            ]
+            response = await self.chat_openai.ainvoke(messages)
+            return response.content
+        except Exception as e:
+            self.logger.error(f"Error generating chat summary: {str(e)}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
+            return None
+        
     # def get_response_with_retry(self, messages, keys_to_check):
     #     retries = 3
     #     for attempt in range(retries):
@@ -54,8 +71,6 @@ class LLMService:
     #         except Exception as e:
     #             self.logger.error(f"Error retrieving response: {e}. Attempt {attempt + 1} of {retries}.")
     #     return {}
-
-  
 
     # async def generate_transcription_summary(self, transcription: str):
     #     """

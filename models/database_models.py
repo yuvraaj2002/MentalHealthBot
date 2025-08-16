@@ -84,10 +84,23 @@ class Checkin(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
+class ChatSummary(Base):
+    """Chat summary table for storing conversation summaries"""
+    __tablename__ = "chat_summaries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    chat_id = Column(String(255), nullable=False)  # Store the chat_id string
+    summary = Column(Text, nullable=False)  # Store the generated summary
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
 # Create indexes for performance optimization
 Index('idx_checkins_user_type_time', Checkin.user_id, Checkin.checkin_type, Checkin.checkin_time)
 Index('idx_checkins_user_time', Checkin.user_id, Checkin.checkin_time)
 Index('idx_users_id', User.id)
+Index('idx_chat_summaries_user_chat', ChatSummary.user_id, ChatSummary.chat_id)
+Index('idx_chat_summaries_chat_id', ChatSummary.chat_id)
 
 # Database dependency
 def get_db():

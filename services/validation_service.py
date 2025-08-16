@@ -156,3 +156,11 @@ class ValidationService:
             **kwargs
         }
         return success_data
+    
+
+    @staticmethod
+    def dict_to_string(data):
+        """Convert checkin context to readable string format"""
+        if not data:
+            return "No data available"
+        return ", ".join([f"{key}: {value}" for key, value in data.items()])

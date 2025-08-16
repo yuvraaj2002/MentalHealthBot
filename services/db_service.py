@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from datetime import datetime, date, UTC
 from rich import print
-from models.database_models import Checkin, User, get_db
+from models.database_models import Checkin, User, ChatSummary, get_db
 from models.pydantic_models import MorningCheckin, EveningCheckin
 
 
@@ -249,6 +249,197 @@ class DatabaseService:
                 "limit": limit,
                 "error": str(e)
             }
+
+    @staticmethod
+    def save_chat_summary(
+        db: Session,
+        user_id: int,
+        chat_id: str,
+        summary: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Save a chat summary to the database
+        
+        Args:
+            db: Database session
+            user_id: ID of the user
+            chat_id: The chat identifier
+            summary: The generated summary text
+            
+        Returns:
+            Dictionary containing the saved summary data or None if failed
+        """
+        try:
+            # Check if a summary already exists for this chat_id
+            existing_summary = db.query(ChatSummary).filter(
+                ChatSummary.chat_id == chat_id
+            ).first()
+            
+            if existing_summary:
+                # Update existing summary
+                existing_summary.summary = summary
+                existing_summary.updated_at = datetime.now(UTC)
+                db.commit()
+                logger.info(f"Updated existing chat summary for chat_id: {chat_id}")
+                
+                return {
+                    "id": existing_summary.id,
+                    "user_id": existing_summary.user_id,
+                    "chat_id": existing_summary.chat_id,
+                    "summary": existing_summary.summary,
+                    "updated_at": existing_summary.updated_at.isoformat()
+                }
+            else:
+                # Create new summary
+                new_summary = ChatSummary(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    summary=summary
+                )
+                db.add(new_summary)
+                db.commit()
+                db.refresh(new_summary)
+                
+                logger.info(f"Created new chat summary for chat_id: {chat_id}")
+                
+                return {
+                    "id": new_summary.id,
+                    "user_id": new_summary.user_id,
+                    "chat_id": new_summary.chat_id,
+                    "summary": new_summary.summary,
+                    "created_at": new_summary.created_at.isoformat()
+                }
+                
+        except Exception as e:
+            logger.error(f"Error saving chat summary for user {user_id}, chat {chat_id}: {e}")
+            db.rollback()
+            return None
+
+    @staticmethod
+    def get_chat_summary(
+        db: Session,
+        chat_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a chat summary by chat_id
+        
+        Args:
+            db: Database session
+            chat_id: The chat identifier
+            
+        Returns:
+            Dictionary containing the summary data or None if not found
+        """
+        try:
+            summary = db.query(ChatSummary).filter(
+                ChatSummary.chat_id == chat_id
+            ).first()
+            
+            if not summary:
+                logger.info(f"No chat summary found for chat_id: {chat_id}")
+                return None
+            
+            return {
+                "id": summary.id,
+                "user_id": summary.user_id,
+                "chat_id": summary.chat_id,
+                "summary": summary.summary,
+                "created_at": summary.created_at.isoformat(),
+                "updated_at": summary.updated_at.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error retrieving chat summary for chat_id {chat_id}: {e}")
+            return None
+
+    @staticmethod
+    def get_user_chat_summaries(
+        db: Session,
+        user_id: int,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get all chat summaries for a specific user
+        
+        Args:
+            db: Database session
+            user_id: ID of the user
+            limit: Maximum number of summaries to return
+            
+        Returns:
+            Dictionary containing user's chat summaries
+        """
+        try:
+            summaries = db.query(ChatSummary)\
+                .filter(ChatSummary.user_id == user_id)\
+                .order_by(desc(ChatSummary.created_at))\
+                .limit(limit)\
+                .all()
+            
+            summary_list = []
+            for summary in summaries:
+                summary_list.append({
+                    "id": summary.id,
+                    "chat_id": summary.chat_id,
+                    "summary": summary.summary,
+                    "created_at": summary.created_at.isoformat(),
+                    "updated_at": summary.updated_at.isoformat()
+                })
+            
+            return {
+                "user_id": user_id,
+                "summaries": summary_list,
+                "total_count": len(summary_list),
+                "limit": limit
+            }
+            
+        except Exception as e:
+            logger.error(f"Error retrieving chat summaries for user {user_id}: {e}")
+            return {
+                "user_id": user_id,
+                "summaries": [],
+                "total_count": 0,
+                "limit": limit,
+                "error": str(e)
+            }
+
+    @staticmethod
+    def delete_chat_summary(
+        db: Session,
+        chat_id: str,
+        user_id: int
+    ) -> bool:
+        """
+        Delete a chat summary (only if it belongs to the user)
+        
+        Args:
+            db: Database session
+            chat_id: The chat identifier
+            user_id: ID of the user (for authorization)
+            
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        try:
+            summary = db.query(ChatSummary).filter(
+                ChatSummary.chat_id == chat_id,
+                ChatSummary.user_id == user_id
+            ).first()
+            
+            if not summary:
+                logger.warning(f"No chat summary found for chat_id: {chat_id} and user: {user_id}")
+                return False
+            
+            db.delete(summary)
+            db.commit()
+            
+            logger.info(f"Deleted chat summary for chat_id: {chat_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting chat summary for chat_id {chat_id}: {e}")
+            db.rollback()
+            return False
 
 if __name__ == "__main__":
     # Use get_db() function for proper session management
