@@ -125,12 +125,26 @@ CREATE TABLE checkins (
 );
 ```
 
+### Chat Summaries Table
+```sql
+CREATE TABLE chat_summaries (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    chat_id VARCHAR(255) NOT NULL,
+    summary TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
 ### Indexes
 ```sql
 -- Performance indexes
 CREATE INDEX idx_checkins_user_type_time ON checkins(user_id, checkin_type, checkin_time);
 CREATE INDEX idx_checkins_user_time ON checkins(user_id, checkin_time);
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_chat_summaries_user_chat ON chat_summaries(user_id, chat_id);
+CREATE INDEX idx_chat_summaries_chat_id ON chat_summaries(chat_id);
 ```
 
 ---
@@ -153,9 +167,17 @@ GET  /checkin/today         # Get today's check-ins
 GET  /checkin/history       # Get check-in history
 ```
 
+### Chat Summary Routes (`/chat_summary`)
+```python
+POST /chat_summary/create   # Create a new chat summary
+GET  /chat_summary/user/{user_id} # Get all chat summaries for a user
+GET  /chat_summary/chat/{chat_id} # Get a specific chat summary by ID
+```
+
 ### Agent Routes (`/agent`)
 ```python
 WebSocket /agent/chat/{chat_id}  # Real-time conversation
+GET       /agent/chat/summary/{chat_id}  # Get chat summary (auto-generated and saved)
 ```
 
 ---
@@ -191,6 +213,47 @@ ws://localhost:8000/agent/chat/{user_id}_{session_id}_{checkin_type}?token={jwt_
 
 ---
 
+## 📝 Chat Summary Management
+
+### Automatic Summary Generation
+The system automatically generates and stores chat summaries for every conversation session:
+
+1. **Summary Creation**: When a user requests a chat summary via `/agent/chat/summary/{chat_id}`
+2. **LLM Processing**: GPT-4o generates a comprehensive summary based on:
+   - User's check-in context (morning/evening data)
+   - Complete conversation history from Redis
+3. **Database Storage**: Summary is automatically saved to `chat_summaries` table
+4. **Upsert Logic**: If a summary already exists for a `chat_id`, it updates the existing record
+
+### Summary Data Structure
+```json
+{
+  "id": 1,
+  "user_id": 2,
+  "chat_id": "2_5_0",
+  "summary": "User reported feeling anxious in the morning...",
+  "created_at": "2025-01-27T10:00:00Z",
+  "updated_at": "2025-01-27T10:00:00Z"
+}
+```
+
+### Summary Benefits
+- **Persistent Storage**: Summaries are permanently stored in PostgreSQL
+- **Quick Retrieval**: No need to regenerate summaries from conversation history
+- **User Privacy**: Users can only access their own summaries
+- **Analytics Ready**: Summaries can be used for mental health trend analysis
+- **Efficient Storage**: Text summaries are much smaller than full conversation logs
+
+### Summary Generation Process
+```
+User Request → Context Retrieval → LLM Processing → Summary Generation → Database Storage → Response
+     ↓              ↓                ↓                ↓                ↓              ↓
+  /summary      Check-in +      GPT-4o API      AI-generated    PostgreSQL      JSON Response
+  endpoint      Conversation     Call           Summary         Insert/Update
+```
+
+---
+
 ## 🔧 Services
 
 ### Database Service (`DatabaseService`)
@@ -202,6 +265,14 @@ class DatabaseService:
     def get_today_checkins(db: Session, user_id: int)
     @staticmethod
     def get_checkin_history(db: Session, user_id: int, checkin_type: str, limit: int)
+    @staticmethod
+    def save_chat_summary(db: Session, user_id: int, chat_id: str, summary: str)
+    @staticmethod
+    def get_chat_summary(db: Session, chat_id: str)
+    @staticmethod
+    def get_user_chat_summaries(db: Session, user_id: int, limit: int)
+    @staticmethod
+    def delete_chat_summary(db: Session, chat_id: str, user_id: int)
 ```
 
 **Key Features**:
@@ -209,6 +280,8 @@ class DatabaseService:
 - Gender conversion (0→Male, 1→Female, 2→Third gender)
 - Optimized queries with proper indexing
 - Error handling and logging
+- **Chat summary management with upsert functionality**
+- **User-specific summary retrieval and deletion**
 
 ### Redis Service (`RedisService`)
 ```python
@@ -365,6 +438,8 @@ alembic upgrade head
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+**Note**: The latest migration (`create_chat_summaries_table`) creates the new `chat_summaries` table for storing conversation summaries. Make sure to run `alembic upgrade head` to apply all migrations.
+
 ### Docker Deployment
 ```dockerfile
 FROM python:3.9-slim
@@ -459,6 +534,8 @@ The system includes comprehensive logging with:
 - **Integration APIs**: Third-party mental health service connections
 - **Mobile App**: Native iOS and Android applications
 - **Voice Support**: Speech-to-text and text-to-speech capabilities
+- **Chat Summary Analytics**: Trend analysis and insights from conversation summaries
+- **Summary Export**: PDF/CSV export of chat summaries for users and providers
 
 ### Technical Improvements
 - **GraphQL API**: More flexible data querying

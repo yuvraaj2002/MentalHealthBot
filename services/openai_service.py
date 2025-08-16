@@ -116,20 +116,4 @@ class LLMService:
     #         return None
 
 
-# if __name__ == "__main__":
-#     llm_service = LLMService()
-#     transcript = """
-# Hey, so listen basically there are a lot of things that I would like to inquire about. The very first thing is that I just want to 
-# figure out that do you have any kind of products which are related to some oily skin and to be more precise that it would be better
-# that if you can provide me some of the products that are better suited for like dusky skin tone because I have a dusky skin tone so
-# I want that such kind of product and also make sure that in your store also try to include that the medicines which do not have any
-# kind of reported skin allergies or something. So I just want this thing to be considered in the products which you are going to 
-# show me right now. So kindly make sure about this thing.
-# """
-#     # Escape curly braces in transcript to prevent format errors
-#     safe_transcript = transcript.replace("{", "{{").replace("}", "}}")
-#     messages = [
-#         SystemMessage(call_analysis_prompt.format(transcript=safe_transcript)),
-#         HumanMessage("Extract the key information from the transcript")
-#     ]
-#     response = llm_service.get_response_with_retry(messages, ["contact_name", "contact_email", "contact_number", "call_objective"])
+

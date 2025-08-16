@@ -348,21 +348,27 @@ async def get_chat_summary(chat_id: str, current_user: User = Depends(get_curren
 
     # Getting the conversational context from the redis against a chat id
     conversational_context = redis_service.get_conversation_context(chat_id)
+    logger.info(f"[SYSTEM] Conversational context: {conversational_context}")
 
     # Getting the checkin context from the database
     db = next(get_db())
     morning_checking = False
     if len(chat_id.split('_')) > 2:
-        morning_checking = chat_id.split('_')[2] == '1'
+        if chat_id.split('_')[2] == '1':
+            morning_checking = False  # '1' means evening
+        else:
+            morning_checking = True   # '0' means morning
     else:
-        morning_checking = True
+        morning_checking = True  # Default to morning if parsing fails
 
     # Getting the checkin context and conversational context
     checkin_context = DatabaseService.get_last_daily_checkin(db, current_user.id, morning_checking)
     checkin_context_string = validation_service.dict_to_string(checkin_context)
+    logger.info(f"[SYSTEM] Checkin context: {checkin_context_string}")
 
     # Getting the summary of the chat session
     summary = await llm_service.get_chat_summary(checkin_context_string, conversational_context)
+    logger.info(f"[SYSTEM] Summary: {summary}")
 
     # Save the summary to the database
     db = next(get_db())
