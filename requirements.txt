@@ -3,11 +3,10 @@ uvicorn[standard]
 pydantic
 python-multipart
 rich 
-sqlalchemy
-psycopg2-binary
+motor
+pymongo
 python-jose[cryptography]
 passlib
-alembic
 pydantic_settings
 pydantic[email]
 bcrypt==4.0.1
@@ -20,3 +19,5 @@ langchain_core
 markdown
 reportlab
 Pillow
+markdown2
+weasyprint

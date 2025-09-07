@@ -16,9 +16,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers.auth import router as api_router
-from routers.checkin import router as checkin_router
 from routers.agent import router as agent_router
+from models.database_models import connect_to_mongo, close_mongo_connection
 
 app = FastAPI(
     title="Mental Health Bot API",
@@ -43,9 +42,18 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    """Initialize MongoDB connection on startup"""
+    await connect_to_mongo()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close MongoDB connection on shutdown"""
+    await close_mongo_connection()
+
 # Include routers
-app.include_router(api_router)
-app.include_router(checkin_router)
 app.include_router(agent_router)
 
 if __name__ == "__main__":

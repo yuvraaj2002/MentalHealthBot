@@ -1,12 +1,8 @@
 import logging
-from typing import Optional, Dict, Any, Union
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from datetime import datetime, date, UTC
-from rich import print
-from models.database_models import Checkin, User, ChatSummary, get_db
-from models.pydantic_models import MorningCheckin, EveningCheckin
-
+from typing import Dict, Any
+from datetime import datetime, UTC
+from models.database_models import get_database
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 
@@ -14,435 +10,287 @@ class DatabaseService:
     """Service class for database operations related to check-ins"""
     
     @staticmethod
-    def get_last_daily_checkin(
-        db: Session, 
-        user_id: int, 
-        is_morning: bool
-    ) -> Optional[Dict[str, Any]]:
+    async def get_patient_checkin_context(patient_id: str) -> Dict[str, Any]:
         """
-        Get the last daily checkin for a user based on AM/PM boolean
-        Includes user information (name, gender, age) by joining with User table
+        Get the most recent daily checkin for a specific patient from the dailycheckins collection.
         
         Args:
-            db: Database session
-            user_id: ID of the user
-            is_morning: Boolean - True for morning (AM), False for evening (PM)
+            patient_id: ID of the patient (ObjectId string)
             
         Returns:
-            Dictionary containing checkin data + user context or None if not found
+            Dictionary containing the most recent daily checkin for the patient.
         """
         try:
-            # Determine checkin type based on boolean
-            checkin_type = "morning" if is_morning else "evening"
-            
-            # Query for the most recent checkin with user information using JOIN
-            # Using select_from for better performance and explicit column selection
-            # Added limit(1) for additional optimization
-            last_checkin_with_user = db.query(
-                Checkin.sleep_quality, Checkin.body_sensation, Checkin.energy_level,
-                Checkin.mental_state, Checkin.executive_task, Checkin.emotion_category,
-                Checkin.overwhelm_amount, Checkin.emotion_in_moment, Checkin.surroundings_impact,
-                Checkin.meaningful_moments_quantity, Checkin.checkin_time,
-                User.first_name, User.last_name, User.age, User.gender
-            ).select_from(Checkin)\
-                .join(User, Checkin.user_id == User.id)\
-                .filter(Checkin.user_id == user_id)\
-                .filter(Checkin.checkin_type == checkin_type)\
-                .order_by(desc(Checkin.checkin_time))\
-                .limit(1)\
-                .first()
-            
-            if not last_checkin_with_user:
-                logger.info(f"No {checkin_type} checkin found for user {user_id}")
-                return None
-            
-            # Unpack the result (now it's a tuple of selected columns)
-            result = last_checkin_with_user
-            
-            # Prepare response based on checkin type
-            if is_morning:
-                # Morning checkin data
-                checkin_data = {
-                    "sleep_quality": result.sleep_quality,
-                    "body_sensation": result.body_sensation,
-                    "energy_level": result.energy_level,
-                    "mental_state": result.mental_state,
-                    "executive_task": result.executive_task
-                }
-            else:
-                # Evening checkin data
-                checkin_data = {
-                    "emotion_category": result.emotion_category,
-                    "overwhelm_amount": result.overwhelm_amount,
-                    "emotion_in_moment": result.emotion_in_moment,
-                    "surroundings_impact": result.surroundings_impact,
-                    "meaningful_moments_quantity": result.meaningful_moments_quantity
-                }
-            
-            # Add user context information
-            user_context = {
-                "first_name": result.first_name,
-                "last_name": result.last_name,
-                "age": result.age,
-                "gender": DatabaseService._get_gender_text(result.gender)
-            }
-            
-            # Combine checkin data with user context
-            complete_context = {
-                **checkin_data,
-                **user_context
-            }
-            
-            logger.info(f"Retrieved last {checkin_type} checkin with user context for user {user_id}")
-            return complete_context
-            
-        except Exception as e:
-            logger.error(f"Error retrieving last {checkin_type} checkin for user {user_id}: {e}")
-            return None
-    
-    @staticmethod
-    def _get_gender_text(gender: int) -> str:
-        """Convert gender number to readable text"""
-        gender_map = {
-            0: "Male",
-            1: "Female", 
-            2: "Third gender"
-        }
-        return gender_map.get(gender, "Not specified")
-    
-    @staticmethod
-    def get_today_checkins(db: Session, user_id: int) -> Dict[str, Any]:
-        """
-        Get today's checkins for a user (both morning and evening)
-        
-        Args:
-            db: Database session
-            user_id: ID of the user
-            
-        Returns:
-            Dictionary containing today's checkins
-        """
-        try:
-            today = date.today()
-            
-            today_checkins = db.query(Checkin)\
-                .filter(Checkin.user_id == user_id)\
-                .filter(Checkin.checkin_time >= today)\
-                .order_by(Checkin.checkin_time.asc())\
-                .all()
-            
-            morning_checkin = None
-            evening_checkin = None
-            
-            for checkin in today_checkins:
-                if checkin.checkin_type == "morning":
-                    morning_checkin = {
-                        "id": checkin.id,
-                        "checkin_time": checkin.checkin_time.isoformat(),
-                        "sleep_quality": checkin.sleep_quality,
-                        "body_sensation": checkin.body_sensation,
-                        "energy_level": checkin.energy_level,
-                        "mental_state": checkin.mental_state,
-                        "executive_task": checkin.executive_task
-                    }
-                elif checkin.checkin_type == "evening":
-                    evening_checkin = {
-                        "id": checkin.id,
-                        "checkin_time": checkin.checkin_time.isoformat(),
-                        "emotion_category": checkin.emotion_category,
-                        "overwhelm_amount": checkin.overwhelm_amount,
-                        "emotion_in_moment": checkin.emotion_in_moment,
-                        "surroundings_impact": checkin.surroundings_impact,
-                        "meaningful_moments_quantity": checkin.meaningful_moments_quantity
-                    }
-            
-            return {
-                "user_id": user_id,
-                "date": today.isoformat(),
-                "morning_checkin": morning_checkin,
-                "evening_checkin": evening_checkin,
-                "total_checkins": len(today_checkins)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error retrieving today's checkins for user {user_id}: {e}")
-            return {
-                "user_id": user_id,
-                "date": today.isoformat(),
-                "morning_checkin": None,
-                "evening_checkin": None,
-                "total_checkins": 0,
-                "error": str(e)
-            }
-    
-    @staticmethod
-    def get_checkin_history(
-        db: Session, 
-        user_id: int, 
-        checkin_type: Optional[str] = None,
-        limit: int = 30
-    ) -> Dict[str, Any]:
-        """
-        Get checkin history for a user with optional type filtering
-        
-        Args:
-            db: Database session
-            user_id: ID of the user
-            checkin_type: Optional filter for "morning" or "evening"
-            limit: Maximum number of checkins to return
-            
-        Returns:
-            Dictionary containing checkin history
-        """
-        try:
-            query = db.query(Checkin).filter(Checkin.user_id == user_id)
-            
-            if checkin_type:
-                query = query.filter(Checkin.checkin_type == checkin_type)
-            
-            checkins = query.order_by(desc(Checkin.checkin_time)).limit(limit).all()
-            
-            checkin_list = []
-            for checkin in checkins:
-                checkin_data = {
-                    "id": checkin.id,
-                    "checkin_type": checkin.checkin_type,
-                    "checkin_time": checkin.checkin_time.isoformat(),
-                    "user_id": checkin.user_id
-                }
-                
-                # Add type-specific data
-                if checkin.checkin_type == "morning":
-                    checkin_data.update({
-                        "sleep_quality": checkin.sleep_quality,
-                        "body_sensation": checkin.body_sensation,
-                        "energy_level": checkin.energy_level,
-                        "mental_state": checkin.mental_state,
-                        "executive_task": checkin.executive_task
-                    })
-                else:  # evening
-                    checkin_data.update({
-                        "emotion_category": checkin.emotion_category,
-                        "overwhelm_amount": checkin.overwhelm_amount,
-                        "emotion_in_moment": checkin.emotion_in_moment,
-                        "surroundings_impact": checkin.surroundings_impact,
-                        "meaningful_moments_quantity": checkin.meaningful_moments_quantity
-                    })
-                
-                checkin_list.append(checkin_data)
-            
-            return {
-                "user_id": user_id,
-                "checkin_type": checkin_type,
-                "checkins": checkin_list,
-                "total_count": len(checkin_list),
-                "limit": limit
-            }
-            
-        except Exception as e:
-            logger.error(f"Error retrieving checkin history for user {user_id}: {e}")
-            return {
-                "user_id": user_id,
-                "checkin_type": checkin_type,
-                "checkins": [],
-                "total_count": 0,
-                "limit": limit,
-                "error": str(e)
-            }
+            db = get_database()
 
-    @staticmethod
-    def save_chat_summary(
-        db: Session,
-        user_id: int,
-        chat_id: str,
-        summary: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Save a chat summary to the database
-        
-        Args:
-            db: Database session
-            user_id: ID of the user
-            chat_id: The chat identifier
-            summary: The generated summary text
-            
-        Returns:
-            Dictionary containing the saved summary data or None if failed
-        """
-        try:
-            # Check if a summary already exists for this chat_id
-            existing_summary = db.query(ChatSummary).filter(
-                ChatSummary.chat_id == chat_id
-            ).first()
-            
-            if existing_summary:
-                # Update existing summary
-                existing_summary.summary = summary
-                existing_summary.updated_at = datetime.now(UTC)
-                db.commit()
-                logger.info(f"Updated existing chat summary for chat_id: {chat_id}")
-                
+            # Query for the most recent document from dailycheckins collection for the given patient
+            checkin = await db.dailycheckins.find_one(
+                {"patient": ObjectId(patient_id)},
+                sort=[("createdAt", -1)]
+            )
+
+            if not checkin:
+                logger.info(f"No daily checkins found for patient {patient_id}")
                 return {
-                    "id": existing_summary.id,
-                    "user_id": existing_summary.user_id,
-                    "chat_id": existing_summary.chat_id,
-                    "summary": existing_summary.summary,
-                    "updated_at": existing_summary.updated_at.isoformat()
+                    "patient_id": patient_id,
+                    "checkin": None,
+                    "found": False
                 }
+
+            # Convert ObjectId to string for JSON serialization
+            checkin_data = dict(checkin)
+            if "patient" in checkin_data:
+                checkin_data["patient"] = str(checkin_data["patient"])
+
+            # Format executive tasks for display
+            executive_tasks = checkin_data.get('executiveTasks', 'Not specified')
+            if isinstance(executive_tasks, list):
+                executive_tasks_str = ', '.join(executive_tasks) if executive_tasks else 'Not specified'
             else:
-                # Create new summary
-                new_summary = ChatSummary(
-                    user_id=user_id,
-                    chat_id=chat_id,
-                    summary=summary
+                executive_tasks_str = executive_tasks if executive_tasks else 'Not specified'
+
+            # Format check-in date
+            checkin_date = checkin_data.get('createdAt', 'Not specified')
+
+            # Create context string based on checkin type
+            if checkin_data.get('type') == 'Morning':
+                context_string = (
+                    "Morning Check-in Summary:\n"
+                    f"- Sleep Quality: {checkin_data.get('sleepQuality', 'Not specified')}\n"
+                    f"- Body Sensation: {checkin_data.get('bodySensation', 'Not specified')}\n"
+                    f"- Energy Level: {checkin_data.get('energyLevel', 'Not specified')}\n"
+                    f"- Mental State: {checkin_data.get('mentalState', 'Not specified')}\n"
+                    f"- Executive Tasks: {executive_tasks_str}\n"
+                    f"- Total Points: {checkin_data.get('totalPoints', 'Not specified')}\n"
+                    f"- Risk Level: {checkin_data.get('riskLevel', 'Not specified')}\n"
+                    f"- Message: {checkin_data.get('message', 'No message')}\n"
+                    f"- Check-in Date: {checkin_date}"
                 )
-                db.add(new_summary)
-                db.commit()
-                db.refresh(new_summary)
-                
-                logger.info(f"Created new chat summary for chat_id: {chat_id}")
-                
-                return {
-                    "id": new_summary.id,
-                    "user_id": new_summary.user_id,
-                    "chat_id": new_summary.chat_id,
-                    "summary": new_summary.summary,
-                    "created_at": new_summary.created_at.isoformat()
-                }
-                
-        except Exception as e:
-            logger.error(f"Error saving chat summary for user {user_id}, chat {chat_id}: {e}")
-            db.rollback()
-            return None
+            else:
+                context_string = (
+                    "Evening Check-in Summary:\n"
+                    f"- Emotion Category: {checkin_data.get('emotionCategory', 'Not specified')}\n"
+                    f"- Overwhelm Amount: {checkin_data.get('overwhelmAmount', 'Not specified')}\n"
+                    f"- Emotion in Moment: {checkin_data.get('emotionInMoment', 'Not specified')}\n"
+                    f"- Surroundings Impact: {checkin_data.get('surroundingsImpact', 'Not specified')}\n"
+                    f"- Social Engagement Level: {checkin_data.get('socialEngagementLevel', 'Not specified')}\n"
+                    f"- Meaningful Moments Quantity: {checkin_data.get('meaningfulMomentsQuantity', 'Not specified')}\n"
+                    f"- Executive Tasks: {executive_tasks_str}\n"
+                    f"- Total Points: {checkin_data.get('totalPoints', 'Not specified')}\n"
+                    f"- Risk Level: {checkin_data.get('riskLevel', 'Not specified')}\n"
+                    f"- Message: {checkin_data.get('message', 'No message')}\n"
+                    f"- Check-in Date: {checkin_date}"
+                )
 
+            logger.info(
+                f"Retrieved most recent daily checkin for patient {patient_id} and created context string"
+            )
+
+            return {
+                "patient_id": patient_id,
+                "document_id": str(checkin_data["_id"]),  # Return the document ID for updating
+                "context_string": context_string,
+                "checkin_type": checkin_data.get('type', 'Unknown'),
+                "found": True
+            }
+
+        except Exception as e:
+            logger.error(f"Error retrieving daily checkin for patient {patient_id}: {e}")
+            return {
+                "patient_id": patient_id,
+                "checkin": None,
+                "found": False,
+                "error": str(e)
+            }
+    
     @staticmethod
-    def get_chat_summary(
-        db: Session,
-        chat_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def add_checkin_summary(document_id: str, summary_message: str) -> Dict[str, Any]:
         """
-        Retrieve a chat summary by chat_id
+        Update the message field of a specific checkin document with the generated summary
         
         Args:
-            db: Database session
-            chat_id: The chat identifier
+            document_id: The MongoDB document ID (ObjectId string)
+            summary_message: The generated summary message to store
             
         Returns:
-            Dictionary containing the summary data or None if not found
+            Dictionary containing the update result
         """
         try:
-            summary = db.query(ChatSummary).filter(
-                ChatSummary.chat_id == chat_id
-            ).first()
+            db = get_database()
             
-            if not summary:
-                logger.info(f"No chat summary found for chat_id: {chat_id}")
-                return None
+            # Update the document with the new message
+            result = await db.dailycheckins.update_one(
+                {"_id": ObjectId(document_id)},
+                {
+                    "$set": {
+                        "message": summary_message,
+                        "updatedAt": datetime.now(UTC)
+                    }
+                }
+            )
             
+            if result.modified_count == 1:
+                logger.info(f"Successfully updated message for document {document_id}")
+                return {
+                    "document_id": document_id,
+                    "success": True,
+                    "message": "Message updated successfully"
+                }
+            else:
+                logger.warning(f"No document found with ID {document_id} or no changes made")
             return {
-                "id": summary.id,
-                "user_id": summary.user_id,
-                "chat_id": summary.chat_id,
-                "summary": summary.summary,
-                "created_at": summary.created_at.isoformat(),
-                "updated_at": summary.updated_at.isoformat()
+                    "document_id": document_id,
+                    "success": False,
+                    "message": "Document not found or no changes made"
             }
             
         except Exception as e:
-            logger.error(f"Error retrieving chat summary for chat_id {chat_id}: {e}")
-            return None
-
+            logger.error(f"Error updating message for document {document_id}: {e}")
+            return {
+                "document_id": document_id,
+                "success": False,
+                "message": f"Error: {str(e)}"
+            }
+    
     @staticmethod
-    def get_user_chat_summaries(
-        db: Session,
-        user_id: int,
-        limit: int = 50
+    async def save_chat_message(
+        patient_id: str,
+        query: str,
+        response: str
     ) -> Dict[str, Any]:
         """
-        Get all chat summaries for a specific user
+        Save a chat message (query and response) to the chats collection
         
         Args:
-            db: Database session
-            user_id: ID of the user
-            limit: Maximum number of summaries to return
+            patient_id: ID of the patient (ObjectId string)
+            query: User's message/question
+            response: AI assistant's response
             
         Returns:
-            Dictionary containing user's chat summaries
+            Dictionary containing the saved chat data
         """
         try:
-            summaries = db.query(ChatSummary)\
-                .filter(ChatSummary.user_id == user_id)\
-                .order_by(desc(ChatSummary.created_at))\
-                .limit(limit)\
-                .all()
+            db = get_database()
             
-            summary_list = []
-            for summary in summaries:
-                summary_list.append({
-                    "id": summary.id,
-                    "chat_id": summary.chat_id,
-                    "summary": summary.summary,
-                    "created_at": summary.created_at.isoformat(),
-                    "updated_at": summary.updated_at.isoformat()
-                })
+            # Create chat document
+            chat_document = {
+                "patient": ObjectId(patient_id),
+                "query": query,
+                "response": response,
+                "createdAt": datetime.now(UTC),
+                "updatedAt": datetime.now(UTC)
+            }
+            
+            # Insert the document
+            result = await db.chats.insert_one(chat_document)
+            
+            logger.info(f"Successfully saved chat message for patient {patient_id}")
             
             return {
-                "user_id": user_id,
-                "summaries": summary_list,
-                "total_count": len(summary_list),
+                "chat_id": str(result.inserted_id),
+                "patient_id": patient_id,
+                "query": query,
+                "response": response,
+                "success": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error saving chat message for patient {patient_id}: {e}")
+            return {
+                "patient_id": patient_id,
+                "success": False,
+                "error": str(e)
+            }
+
+    @staticmethod
+    async def get_patient_recent_chats(patient_id: str, limit: int = 20) -> Dict[str, Any]:
+        """
+        Get the recent chat conversations for a specific patient and format them for context
+        
+        Args:
+            patient_id: ID of the patient (ObjectId string)
+            limit: Maximum number of chat messages to return (default: 20)
+            
+        Returns:
+            Dictionary containing the recent chat conversations and formatted context string
+        """
+        try:
+            db = get_database()
+            
+            # Query recent chat messages for the patient, sorted by creation date (newest first)
+            chats = await db.chats.find(
+                {"patient": ObjectId(patient_id)}
+            ).sort("createdAt", -1).limit(limit).to_list(length=None)
+            
+            # Convert ObjectIds to strings for JSON serialization
+            chat_list = []
+            for chat in chats:
+                chat_data = dict(chat)
+                # Convert ObjectIds to strings
+                if "_id" in chat_data:
+                    chat_data["_id"] = str(chat_data["_id"])
+                if "patient" in chat_data:
+                    chat_data["patient"] = str(chat_data["patient"])
+                chat_list.append(chat_data)
+            
+            # Build conversational context string
+            conversational_context = ""
+            if chat_list:
+                # Use last 15 conversations for context
+                recent_chats = chat_list[:15]
+                chat_strings = []
+                for chat in recent_chats:
+                    chat_strings.append(f"User: {chat['query']}\nAssistant: {chat['response']}")
+                conversational_context = "\n\n".join(chat_strings)
+            else:
+                conversational_context = "This is the beginning of our conversation."
+            
+            logger.info(f"Retrieved {len(chat_list)} recent chats for patient {patient_id}")
+            
+            return {
+                "patient_id": patient_id,
+                "chats": chat_list,
+                "conversational_context": conversational_context,
+                "total_count": len(chat_list),
                 "limit": limit
             }
             
         except Exception as e:
-            logger.error(f"Error retrieving chat summaries for user {user_id}: {e}")
+            logger.error(f"Error retrieving recent chats for patient {patient_id}: {e}")
             return {
-                "user_id": user_id,
-                "summaries": [],
+                "patient_id": patient_id,
+                "chats": [],
+                "conversational_context": "This is the beginning of our conversation.",
                 "total_count": 0,
                 "limit": limit,
                 "error": str(e)
             }
 
-    @staticmethod
-    def delete_chat_summary(
-        db: Session,
-        chat_id: str,
-        user_id: int
-    ) -> bool:
-        """
-        Delete a chat summary (only if it belongs to the user)
-        
-        Args:
-            db: Database session
-            chat_id: The chat identifier
-            user_id: ID of the user (for authorization)
-            
-        Returns:
-            True if deleted successfully, False otherwise
-        """
-        try:
-            summary = db.query(ChatSummary).filter(
-                ChatSummary.chat_id == chat_id,
-                ChatSummary.user_id == user_id
-            ).first()
-            
-            if not summary:
-                logger.warning(f"No chat summary found for chat_id: {chat_id} and user: {user_id}")
-                return False
-            
-            db.delete(summary)
-            db.commit()
-            
-            logger.info(f"Deleted chat summary for chat_id: {chat_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error deleting chat summary for chat_id {chat_id}: {e}")
-            db.rollback()
-            return False
 
 if __name__ == "__main__":
-    # Use get_db() function for proper session management
-    db = next(get_db())
-    result = DatabaseService.get_last_daily_checkin(db, 2, True)
-    print(result)
+    import asyncio
+    from models.database_models import connect_to_mongo
+    
+    async def test_connection():
+        await connect_to_mongo()
+        print("MongoDB connection successful!")
+        
+        # Test the get_patient_daily_checkins function
+        test_patient_id = "6899521238bcd98456d965e0"  # Using the actual patient ID from your database
+        result = await DatabaseService.get_patient_checkin_context(test_patient_id)
+        print(f"Test result for patient {test_patient_id}:")
+        print(f"Checkin found: {result['found']}")
+        if result['found'] and result['context_string']:
+            print(f"Checkin type: {result['checkin_type']}")
+            print(f"Document ID: {result['document_id']}")
+            print("Context string for summary generation:")
+            print(result['context_string'])
+            
+            # Example: Update the message with a sample summary
+            sample_summary = "Patient reported feeling tense and low energy during morning check-in. Risk level is high. Recommend focusing on self-care activities and stress management techniques."
+            update_result = await DatabaseService.add_checkin_summary(result['document_id'], sample_summary)
+            print(f"Update result: {update_result}")
+        else:
+            print("No checkins found for this patient")
+    
+    asyncio.run(test_connection())

@@ -22,24 +22,21 @@ class DeploymentZipCreator:
         
         # Files and directories to exclude
         self.exclude_patterns = [
-            # Environment and secrets
-            '.env',
-            '.env.local',
-            '.env.production',
-            '.env.staging',
-            'secrets.json',
-            'config.json',
+            # Virtual environments
+            'venv',
+            '.venv',
+            'env',
+            'ENV',
             
-            # Python cache and virtual environments
+            # Markdown files
+            '*.md',
+            
+            # Python cache and compiled files
             '__pycache__',
             '*.pyc',
             '*.pyo',
             '*.pyd',
             '.Python',
-            '.venv',
-            'venv',
-            'env',
-            'ENV',
             
             # IDE and editor files
             '.vscode',
@@ -47,13 +44,18 @@ class DeploymentZipCreator:
             '*.swp',
             '*.swo',
             '*~',
-            '.DS_Store',
-            'Thumbs.db',
             
             # Git and version control
             '.git',
             '.gitignore',
             '.gitattributes',
+            
+            # OS generated files
+            '.DS_Store',
+            '.Trashes',
+            'Thumbs.db',
+            'ehthumbs.db',
+            'Desktop.ini',
             
             # Logs and temporary files
             '*.log',
@@ -62,10 +64,10 @@ class DeploymentZipCreator:
             'tmp',
             '*.tmp',
             
-            # Database files
-            '*.db',
-            '*.sqlite',
-            '*.sqlite3',
+            # Backup files
+            '*.bak',
+            '*.backup',
+            '*.old',
             
             # Node modules (if any)
             'node_modules',
@@ -83,26 +85,13 @@ class DeploymentZipCreator:
             'test_*.py',
             '*_test.py',
             
-            # Documentation
+            # Documentation directories
             'docs',
-            '*.md',
-            'README.md',
             
             # Deployment scripts
             'create_deployment_zip.py',
             'deploy.sh',
-            'deploy.py',
-            
-            # Backup files
-            '*.bak',
-            '*.backup',
-            '*.old',
-            
-            # OS generated files
-            '.DS_Store',
-            '.Trashes',
-            'ehthumbs.db',
-            'Desktop.ini'
+            'deploy.py'
         ]
     
     def should_exclude(self, file_path: str) -> bool:

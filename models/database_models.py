@@ -1,112 +1,104 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, Boolean, DateTime, ForeignKey, Index
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime, UTC
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from typing import Optional
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import settings
+import logging
 
-# Database configuration
-DATABASE_URL = settings.postgresql_db
+logger = logging.getLogger(__name__)
 
-# Create engine with connection pool management for Neon serverless
-engine = create_engine(
-    DATABASE_URL, 
-    echo=False,
-    pool_pre_ping=True,          # Ensures dead connections are removed before use
-    pool_recycle=1800,           # Recycles connections older than 30 minutes
-    pool_size=5,                 # Number of connections to maintain in pool
-    max_overflow=10,             # Additional connections for traffic spikes
-    connect_args={
-        "connect_timeout": 10,   # Connection timeout in seconds
-        "application_name": "mental_health_bot_app"  # Help identify connections in logs
-    }
-)
+# MongoDB connection with connection pooling
+class MongoDB:
+    client: Optional[AsyncIOMotorClient] = None
+    database: Optional[AsyncIOMotorDatabase] = None
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Global database instance
+mongodb = MongoDB()
 
-# Create base class
-Base = declarative_base()
-
-class User(Base):
-    """User table for authentication - handles both regular users and providers"""
-    __tablename__ = "users"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    first_name = Column(String(50), nullable=False)
-    last_name = Column(String(50), nullable=False)
-    username = Column(String(50), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)
-    age = Column(Integer, nullable=True)
-    gender = Column(Integer, nullable=True)  # 0: Male, 1: Female, 2: Third gender
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
-
-class Conversation(Base):
-    """Conversation table for storing conversation history"""
-    __tablename__ = "conversations"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    conversations = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
-
-class Checkin(Base):
-    """Daily check-in table for mental health tracking"""
-    __tablename__ = "checkins"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    checkin_type = Column(String(20), nullable=False)  # "morning" or "evening"
-    
-    # Morning check-in fields
-    sleep_quality = Column(String(100), nullable=True)
-    body_sensation = Column(String(100), nullable=True)
-    energy_level = Column(String(100), nullable=True)
-    mental_state = Column(String(100), nullable=True)
-    executive_task = Column(String(100), nullable=True)
-    
-    # Evening check-in fields
-    emotion_category = Column(String(100), nullable=True)
-    overwhelm_amount = Column(String(100), nullable=True)
-    emotion_in_moment = Column(String(100), nullable=True)
-    surroundings_impact = Column(String(100), nullable=True)
-    meaningful_moments_quantity = Column(String(100), nullable=True)
-    
-    # Timestamps
-    checkin_time = Column(DateTime, default=lambda: datetime.now(UTC))
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
-
-class ChatSummary(Base):
-    """Chat summary table for storing conversation summaries"""
-    __tablename__ = "chat_summaries"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    chat_id = Column(String(255), nullable=False)  # Store the chat_id string
-    summary = Column(Text, nullable=False)  # Store the generated summary
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
-
-# Create indexes for performance optimization
-Index('idx_checkins_user_type_time', Checkin.user_id, Checkin.checkin_type, Checkin.checkin_time)
-Index('idx_checkins_user_time', Checkin.user_id, Checkin.checkin_time)
-Index('idx_users_id', User.id)
-Index('idx_chat_summaries_user_chat', ChatSummary.user_id, ChatSummary.chat_id)
-Index('idx_chat_summaries_chat_id', ChatSummary.chat_id)
-
-# Database dependency
-def get_db():
-    """Database dependency for FastAPI"""
-    db = SessionLocal()
+async def connect_to_mongo():
+    """Create database connection with connection pooling"""
     try:
-        yield db
-    finally:
-        db.close()
+        # Connection pool configuration
+        mongodb.client = AsyncIOMotorClient(
+            settings.mongodb_url,
+            # Connection pool settings
+            maxPoolSize=50,          # Maximum number of connections in the pool
+            minPoolSize=5,           # Minimum number of connections in the pool
+            maxIdleTimeMS=30000,     # Close connections after 30 seconds of inactivity
+            waitQueueTimeoutMS=5000, # Wait up to 5 seconds for a connection
+            serverSelectionTimeoutMS=5000,  # Wait up to 5 seconds to select a server
+            connectTimeoutMS=10000,  # Wait up to 10 seconds to establish a connection
+            socketTimeoutMS=20000,   # Wait up to 20 seconds for a socket operation
+            retryWrites=True,        # Retry write operations
+            retryReads=True,         # Retry read operations
+            # Heartbeat settings
+            heartbeatFrequencyMS=10000,  # Send heartbeat every 10 seconds
+        )
+        
+        mongodb.database = mongodb.client[settings.mongodb_database]
+        
+        # Test the connection
+        await mongodb.client.admin.command('ping')
+        
+        # Log connection pool info
+        server_info = await mongodb.client.server_info()
+        logger.info(f"Successfully connected to MongoDB with connection pooling")
+        logger.info(f"MongoDB version: {server_info.get('version', 'Unknown')}")
+        logger.info(f"Connection pool configured: max={50}, min={5}")
+        
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {e}")
+        raise
+
+async def close_mongo_connection():
+    """Close database connection and connection pool"""
+    if mongodb.client:
+        mongodb.client.close()
+        logger.info("Disconnected from MongoDB and closed connection pool")
+
+def get_database() -> AsyncIOMotorDatabase:
+    """Get database instance with connection pooling"""
+    if mongodb.database is None:
+        raise Exception("Database not initialized. Call connect_to_mongo() first.")
+    return mongodb.database
+
+# Database dependency for FastAPI (async version)
+async def get_db():
+    """Database dependency for FastAPI with connection pooling"""
+    return get_database()
+
+# Connection pool monitoring
+async def get_connection_pool_stats():
+    """Get connection pool statistics for monitoring"""
+    try:
+        if mongodb.client:
+            # Try to get basic connection info without admin privileges
+            try:
+                # Get server info (requires less privileges than serverStatus)
+                server_info = await mongodb.client.server_info()
+                stats = {
+                    'server_version': server_info.get('version', 'Unknown'),
+                    'connection_pool_configured': True,
+                    'max_pool_size': 50,
+                    'min_pool_size': 5,
+                    'status': 'connected'
+                }
+            except Exception as admin_error:
+                # If admin commands fail, return basic connection status
+                logger.warning(f"Admin commands not available: {admin_error}")
+                stats = {
+                    'connection_pool_configured': True,
+                    'max_pool_size': 50,
+                    'min_pool_size': 5,
+                    'status': 'connected',
+                    'note': 'Limited stats due to user permissions'
+                }
+            
+            logger.info(f"Connection pool stats: {stats}")
+            return stats
+        else:
+            return {"error": "Database not connected"}
+    except Exception as e:
+        logger.error(f"Error getting connection pool stats: {e}")
+        return {"error": str(e)}
